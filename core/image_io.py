@@ -1,4 +1,5 @@
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 from PIL import Image, ImageOps
 
 
@@ -24,4 +25,13 @@ def image_to_pdf_bytes(img: Image.Image, dpi: int = 300, white_background: bool 
     else:
         bg = rgba.convert("RGB")
     bg.save(bio, format="PDF", resolution=dpi)
+    return bio.getvalue()
+
+
+def make_zip_bytes(files: dict[str, bytes]) -> bytes:
+    bio = BytesIO()
+    with ZipFile(bio, "w", compression=ZIP_DEFLATED) as zf:
+        for filename, payload in files.items():
+            if payload:
+                zf.writestr(filename, payload)
     return bio.getvalue()
