@@ -69,3 +69,13 @@
 
 - Fixed Streamlit Cloud nested column rendering in the professional result viewer.
 - Moved downloads into a result expander and simplified technical/quality metrics for Streamlit 1.41 compatibility.
+
+## V4.3.0
+
+- Added White Detail Protection Engine for letters, eyes, highlights, smoke, stars, outlines, splashes, and reflections.
+- Added automatic white protection masks using OpenCV, NumPy, morphology, connected components, edges, texture, saturation, and context.
+- Added advanced settings for important white protection and levels: Suave, Normal, and Maxima.
+- Added automatic Maxima protection for logos, DTF designs, stickers, and vector-style artwork.
+- Added Blancos protegidos QA view with green mask preview.
+- Added white protection statistics: detected, protected, removed, and protected percentage.
+- Added unit tests for white letters, eyes, reflections, white background removal, and protection speed.

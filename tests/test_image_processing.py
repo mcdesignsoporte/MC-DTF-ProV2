@@ -1,4 +1,5 @@
 import unittest
+from time import perf_counter
 from io import BytesIO
 from zipfile import ZipFile
 import json
@@ -19,6 +20,7 @@ from ui.detection import detection_value
 from core.preview import alpha_preview, before_after_preview, checkerboard, composite_preview, preview_thumbnail
 from core.quality import alpha_histogram, evaluate_dtf_quality
 from core.export import build_export_package
+from core.white_protection import build_protection_mask, protect_white_regions
 
 
 class ImageProcessingTests(unittest.TestCase):
@@ -105,6 +107,73 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertLess(abs(dominant_background_color(img)[1] - 180), 8)
         self.assertEqual(0, result.getpixel((0, 0))[3])
         self.assertGreater(result.getpixel((20, 20))[3], 180)
+
+    def test_white_letters_remain_after_white_background_removal(self):
+        img = Image.new("RGBA", (90, 50), (255, 255, 255, 255))
+        for x in range(20, 70):
+            for y in range(15, 35):
+                img.putpixel((x, y), (220, 0, 0, 255))
+        for x in range(30, 60):
+            for y in range(22, 28):
+                img.putpixel((x, y), (255, 255, 255, 255))
+
+        cleaned = remove_dominant_background(img, tolerance=34, protect_details=True)
+        protected, mask, stats = protect_white_regions(img, cleaned, level="maxima")
+
+        self.assertEqual(0, protected.getpixel((0, 0))[3])
+        self.assertEqual(255, protected.getpixel((42, 24))[3])
+        self.assertTrue(mask[24, 42])
+        self.assertGreater(stats.white_protected, 0)
+
+    def test_white_eyes_and_reflections_remain(self):
+        img = Image.new("RGBA", (80, 80), (255, 255, 255, 255))
+        for x in range(18, 62):
+            for y in range(18, 62):
+                img.putpixel((x, y), (50, 130, 220, 255))
+        for x in range(30, 38):
+            for y in range(30, 38):
+                img.putpixel((x, y), (255, 255, 255, 255))
+        for x in range(48, 54):
+            for y in range(24, 30):
+                img.putpixel((x, y), (250, 250, 250, 255))
+
+        cleaned = remove_dominant_background(img, tolerance=34, protect_details=True)
+        protected, mask, stats = protect_white_regions(img, cleaned, level="maxima")
+
+        self.assertEqual(255, protected.getpixel((34, 34))[3])
+        self.assertEqual(255, protected.getpixel((50, 26))[3])
+        self.assertTrue(mask[34, 34])
+        self.assertFalse(stats.possible_detail_loss)
+
+    def test_white_background_is_removed_but_internal_white_is_protected(self):
+        img = Image.new("RGBA", (70, 70), (255, 255, 255, 255))
+        for x in range(18, 52):
+            for y in range(18, 52):
+                img.putpixel((x, y), (0, 0, 0, 255))
+        for x in range(30, 40):
+            for y in range(30, 40):
+                img.putpixel((x, y), (255, 255, 255, 255))
+
+        mask = build_protection_mask(img, level="maxima")
+        cleaned = remove_dominant_background(img, tolerance=34, protect_details=True)
+        protected, _, _ = protect_white_regions(img, cleaned, level="maxima")
+
+        self.assertFalse(mask[0, 0])
+        self.assertTrue(mask[35, 35])
+        self.assertEqual(0, protected.getpixel((0, 0))[3])
+        self.assertEqual(255, protected.getpixel((35, 35))[3])
+
+    def test_white_protection_runs_quickly_on_medium_image(self):
+        img = Image.new("RGBA", (600, 600), (255, 255, 255, 255))
+        img.alpha_composite(Image.new("RGBA", (360, 360), (20, 80, 180, 255)), (120, 120))
+        img.alpha_composite(Image.new("RGBA", (80, 40), (255, 255, 255, 255)), (260, 280))
+
+        started = perf_counter()
+        mask = build_protection_mask(img, level="maxima")
+        elapsed = perf_counter() - started
+
+        self.assertTrue(mask[300, 300])
+        self.assertLess(elapsed, 1.0)
 
     def test_clean_alpha_removes_small_trash(self):
         img = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
@@ -195,6 +264,8 @@ class ImageProcessingTests(unittest.TestCase):
             black_level="normal",
             color_tolerance=42,
             protect_details=True,
+            protect_white_details=True,
+            white_protection_level="normal",
             max_ai_side=1200,
             upscale=1,
             dpi=300,

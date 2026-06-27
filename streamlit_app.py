@@ -55,6 +55,8 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         black_level=options.black_level,
         color_tolerance=options.color_tolerance,
         protect_details=options.protect_details,
+        protect_white_details=options.protect_white_details,
+        white_protection_level=options.white_protection_level,
         max_ai_side=options.max_ai_side,
         upscale=options.upscale,
         dpi=options.dpi,
@@ -135,6 +137,8 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         work = result_payload["image"]
         st.session_state["original_img"] = original.copy()
         st.session_state["result_img"] = work
+        st.session_state["white_protection"] = result_payload.get("white_protection")
+        st.session_state["white_mask"] = result_payload.get("white_mask")
         extra_files = {}
 
         if options.make_halftone:
@@ -208,6 +212,8 @@ if "result_img" in st.session_state:
         st.session_state["result_img"],
         options.dpi,
         st.session_state["result_png"],
+        st.session_state.get("white_mask"),
+        st.session_state.get("white_protection"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(

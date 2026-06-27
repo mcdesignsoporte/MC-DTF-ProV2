@@ -26,6 +26,8 @@ class ProcessingOptions:
     black_level: str
     color_tolerance: int
     protect_details: bool
+    protect_white_details: bool
+    white_protection_level: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -181,6 +183,15 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
             "Proteger letras, logos, humo, salpicaduras y contornos finos",
             value=bool(mode.get("protect_details", True)),
         )
+        protect_white_details = st.checkbox(
+            "Proteger blancos importantes",
+            value=bool(mode.get("protect_white_details", True)),
+        )
+        white_protection_level = st.selectbox(
+            "Proteccion de blancos",
+            ["Suave", "Normal", "Maxima"],
+            index=1,
+        )
 
     return {
         "alpha_cut": alpha_cut,
@@ -192,6 +203,8 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "upscale": upscale,
         "black_level": black_level.lower(),
         "protect_details": protect_details,
+        "protect_white_details": protect_white_details,
+        "white_protection_level": white_protection_level.lower(),
     }
 
 
@@ -247,6 +260,8 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         black_level=str(controls["black_level"]),
         color_tolerance=int(controls["color_tolerance"]),
         protect_details=bool(controls["protect_details"]),
+        protect_white_details=bool(controls["protect_white_details"]),
+        white_protection_level=str(controls["white_protection_level"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),

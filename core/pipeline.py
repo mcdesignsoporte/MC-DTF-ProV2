@@ -13,6 +13,7 @@ from core.clean import clean_alpha, trim_transparent
 from core.export import build_export_package
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
+from core.white_protection import protect_white_regions
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,8 @@ class PipelineSettings:
     black_level: str
     color_tolerance: int
     protect_details: bool
+    protect_white_details: bool
+    white_protection_level: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -52,6 +55,10 @@ def process_artwork(
     started = perf_counter()
     logger.info("Processing %s with mode=%s", prefix, settings.mode_key)
     work = img.convert("RGBA")
+    white_stats: dict[str, object] | None = None
+    white_mask = None
+    white_source = work.copy()
+    white_level = _white_level(settings, detection)
     auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
     if (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
@@ -61,6 +68,9 @@ def process_artwork(
         work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details, level=settings.black_level)
     if (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
         work = _remove_auto_background(work, detection, settings)
+    if settings.protect_white_details and not auto_photo:
+        work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
+        white_stats = stats.to_dict()
     if settings.clean_enabled:
         work = clean_alpha(work, alpha_cut=settings.alpha_cut, despeckle_area=settings.despeckle_area, edge_contract=settings.edge_contract)
     if settings.trim:
@@ -69,7 +79,7 @@ def process_artwork(
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
     exports = build_export_package(work, dpi=settings.dpi, prefix=prefix, mode=settings.mode_key, original=img, processing_seconds=round(perf_counter() - started, 3))
-    return {"image": work, **exports}
+    return {"image": work, "white_protection": white_stats, "white_mask": white_mask, **exports}
 
 
 def _remove_auto_background(img: Image.Image, detection: dict[str, object], settings: PipelineSettings) -> Image.Image:
@@ -83,3 +93,11 @@ def _remove_auto_background(img: Image.Image, detection: dict[str, object], sett
     if settings.mode_key == "auto" and detection.get("type") == "Fotografia":
         return img
     return remove_background_opencv(img, protect_details=settings.protect_details)
+
+
+def _white_level(settings: PipelineSettings, detection: dict[str, object]) -> str:
+    """Choose manual or automatic white protection level."""
+    detected_level = str(detection.get("white_protection_level", "")).lower()
+    if detected_level in {"maxima", "maxima_auto"}:
+        return "maxima"
+    return settings.white_protection_level

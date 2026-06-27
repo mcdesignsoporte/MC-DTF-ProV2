@@ -30,6 +30,7 @@ class DetectionResult:
     background: str
     dominant_color: str
     background_uniformity: float
+    white_protection_level: str
     estimated_seconds: float
     resolution: str
 
@@ -54,6 +55,7 @@ def detect(img: Image.Image) -> dict[str, object]:
         use_ai=use_ai,
         background=_background_label(metrics),
         dominant_color=_hex_color(dominant),
+        white_protection_level=_white_protection_level(kind, metrics),
         confidence=round(confidence, 2),
         estimated_seconds=_estimate_seconds(img.width, img.height, use_ai),
         resolution=f"{img.width} x {img.height}px",
@@ -171,6 +173,13 @@ def _background_label(m: dict[str, float]) -> str:
     if m["background_uniformity"] > 62:
         return "color dominante"
     return "textura/degradado"
+
+
+def _white_protection_level(kind: str, m: dict[str, float]) -> str:
+    artwork_types = {"Logo", "Diseno DTF", "Diseno oscuro", "Fondo de color"}
+    if kind in artwork_types or m["logo_score"] > 38 or m["text_score"] > 18 or m["color_count"] < 160:
+        return "maxima"
+    return "normal"
 
 
 def _hex_color(color: tuple[int, int, int]) -> str:

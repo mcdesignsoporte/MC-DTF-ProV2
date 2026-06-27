@@ -14,6 +14,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1500,
     },
     "Fotografia": {
@@ -31,6 +32,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1500,
     },
     "PNG Transparente": {
@@ -48,6 +50,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1600,
     },
     "Conservar Diseno": {
@@ -65,6 +68,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1800,
     },
     "Quitar Fondo Negro": {
@@ -82,6 +86,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1800,
     },
     "Diseno Oscuro": {
@@ -99,6 +104,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 18,
         "color_tolerance": 38,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1800,
     },
     "Fondo de color": {
@@ -116,6 +122,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 44,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1600,
     },
     "Preparar DTF": {
@@ -133,6 +140,7 @@ MODES: dict[str, dict[str, object]] = {
         "black_threshold": 24,
         "color_tolerance": 42,
         "protect_details": True,
+        "protect_white_details": True,
         "max_ai_side": 1600,
     },
 }
