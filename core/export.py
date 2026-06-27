@@ -58,6 +58,8 @@ def build_export_package(
     files = {
         "procesado.png": png,
         "procesado.pdf": pdf,
+        "processed.png": png,
+        "processed.pdf": pdf,
         "metadata.json": json.dumps(metadata, indent=2, ensure_ascii=False).encode("utf-8"),
     }
     if original is not None:

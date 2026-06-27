@@ -10,6 +10,7 @@ MODULES: tuple[dict[str, object], ...] = (
     {"id": "background_removal", "package": "features.background_removal", "phase": 1, "active": True},
     {"id": "cleanup", "package": "features.cleanup", "phase": 1, "active": True},
     {"id": "dtf", "package": "features.dtf", "phase": 2, "active": True},
+    {"id": "dtf_prepress", "package": "features.dtf_prepress", "phase": 2, "active": True},
     {"id": "vectorization", "package": "features.vectorization", "phase": 3, "active": False},
     {"id": "upscale", "package": "features.upscale", "phase": 3, "active": False},
     {"id": "image_correction", "package": "features.image_correction", "phase": 4, "active": False},

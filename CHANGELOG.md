@@ -107,3 +107,13 @@
 - Added `core/non_destructive.py` compatibility API and `core/quality_report.py`.
 - Added Centro Profesional UI with capabilities, active modules, roadmap status, version, and engine state.
 - Added architecture tests for capabilities, module registry, feature flags, non-destructive wrappers, and quality report.
+
+## Fase 2 DTF Profesional
+
+- Added `core/dtf_prepress.py` for alpha quality, halo detection, safe halo correction, edge color expansion, bleed, cutline mask, and small printable element warnings.
+- Added `features/dtf_prepress/` module.
+- Added Preparacion DTF controls for halo removal, halo strength, edge expansion, bleed, cutline, and minimum printable size.
+- Added QA views for Alpha limpio, Halo detectado, Sangrado, Borde de corte, and Elementos pequenos.
+- Added DTF quality report metrics for halo risk, semi-transparency, small elements, cutline readiness, and DTF ready score.
+- Added ZIP artifacts `processed.png`, `processed.pdf`, `alpha_quality.json`, `small_elements_report.json`, and optional `cutline_mask.png`.
+- Added DTF prepress tests with synthetic images.

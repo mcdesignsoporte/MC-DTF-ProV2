@@ -30,6 +30,14 @@ class ProcessingOptions:
     white_protection_level: str
     fine_detail_level: str
     safe_mode: bool
+    enable_dtf_prepress: bool
+    remove_white_halo: bool
+    remove_black_halo: bool
+    halo_strength: str
+    expand_edge_px: int
+    bleed_px: int
+    create_cutline: bool
+    min_printable_mm: float
     max_ai_side: int
     upscale: int
     dpi: int
@@ -203,6 +211,15 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
             ["Suave", "Normal", "Maxima"],
             index=2,
         )
+        st.subheader("Preparacion DTF")
+        enable_dtf_prepress = st.checkbox("Preparar para DTF", value=True)
+        remove_white_halo = st.checkbox("Eliminar halo blanco", value=True)
+        remove_black_halo = st.checkbox("Eliminar halo negro", value=False)
+        halo_strength = st.selectbox("Intensidad halo", ["Suave", "Normal", "Fuerte"], index=0)
+        expand_edge_px = st.selectbox("Expandir colores", [0, 1, 2, 3], index=1, format_func=lambda value: f"{value} px")
+        bleed_px = st.selectbox("Sangrado", [0, 1, 2, 3, 5], index=0, format_func=lambda value: f"{value} px")
+        create_cutline = st.checkbox("Crear borde de corte", value=False)
+        min_printable_mm = st.selectbox("Tamano minimo imprimible", [0.5, 1.0, 1.5, 2.0], index=1, format_func=lambda value: f"{value} mm")
 
     return {
         "alpha_cut": alpha_cut,
@@ -218,6 +235,14 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "protect_white_details": protect_white_details,
         "white_protection_level": white_protection_level.lower(),
         "fine_detail_level": fine_detail_level.lower(),
+        "enable_dtf_prepress": enable_dtf_prepress,
+        "remove_white_halo": remove_white_halo,
+        "remove_black_halo": remove_black_halo,
+        "halo_strength": halo_strength.lower(),
+        "expand_edge_px": expand_edge_px,
+        "bleed_px": bleed_px,
+        "create_cutline": create_cutline,
+        "min_printable_mm": min_printable_mm,
     }
 
 
@@ -277,6 +302,14 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         protect_white_details=bool(controls["protect_white_details"]),
         white_protection_level=str(controls["white_protection_level"]),
         fine_detail_level=str(controls["fine_detail_level"]),
+        enable_dtf_prepress=bool(controls["enable_dtf_prepress"]),
+        remove_white_halo=bool(controls["remove_white_halo"]),
+        remove_black_halo=bool(controls["remove_black_halo"]),
+        halo_strength=str(controls["halo_strength"]),
+        expand_edge_px=int(controls["expand_edge_px"]),
+        bleed_px=int(controls["bleed_px"]),
+        create_cutline=bool(controls["create_cutline"]),
+        min_printable_mm=float(controls["min_printable_mm"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),

@@ -61,6 +61,14 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         white_protection_level=options.white_protection_level,
         fine_detail_level=options.fine_detail_level,
         safe_mode=options.safe_mode,
+        enable_dtf_prepress=options.enable_dtf_prepress,
+        remove_white_halo=options.remove_white_halo,
+        remove_black_halo=options.remove_black_halo,
+        halo_strength=options.halo_strength,
+        expand_edge_px=options.expand_edge_px,
+        bleed_px=options.bleed_px,
+        create_cutline=options.create_cutline,
+        min_printable_mm=options.min_printable_mm,
         max_ai_side=options.max_ai_side,
         upscale=options.upscale,
         dpi=options.dpi,
@@ -151,7 +159,16 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["restored_mask"] = result_payload.get("restored_mask")
         st.session_state["art_loss_risk"] = result_payload.get("art_loss_risk")
         st.session_state["non_destructive_stats"] = result_payload.get("non_destructive_stats")
-        extra_files = {}
+        st.session_state["dtf_prepress"] = result_payload.get("dtf_prepress")
+        st.session_state["alpha_quality"] = result_payload.get("alpha_quality")
+        st.session_state["white_halo_mask"] = result_payload.get("white_halo_mask")
+        st.session_state["black_halo_mask"] = result_payload.get("black_halo_mask")
+        st.session_state["bleed_mask"] = result_payload.get("bleed_mask")
+        st.session_state["cutline_mask"] = result_payload.get("cutline_mask")
+        st.session_state["small_elements_mask"] = result_payload.get("small_elements_mask")
+        st.session_state["small_elements_report"] = result_payload.get("small_elements_report")
+        extra_files = dict(result_payload.get("dtf_extra_files") or {})
+        metadata_extra = dict(result_payload.get("metadata_extra") or {})
 
         if options.make_halftone:
             ht = make_halftone(work, dot_size=options.dot_size, angle=options.angle, invert=options.invert_halftone)
@@ -165,7 +182,7 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
                 st.session_state.pop(key, None)
 
         log.write("2/3 Preparando descargas...")
-        exports = build_export_package(work, dpi=options.dpi, mode=str(mode["key"]), extra_files=extra_files, original=original, processing_seconds=round(time.time() - t0, 3))
+        exports = build_export_package(work, dpi=options.dpi, mode=str(mode["key"]), extra_files=extra_files, original=original, processing_seconds=round(time.time() - t0, 3), metadata_extra=metadata_extra)
         st.session_state["result_png"] = exports["png"]
         st.session_state["result_pdf"] = exports["pdf"]
         st.session_state["result_zip"] = exports["zip"]
@@ -234,6 +251,14 @@ if "result_img" in st.session_state:
         st.session_state.get("restored_mask"),
         st.session_state.get("art_loss_risk"),
         st.session_state.get("non_destructive_stats"),
+        st.session_state.get("dtf_prepress"),
+        st.session_state.get("alpha_quality"),
+        st.session_state.get("white_halo_mask"),
+        st.session_state.get("black_halo_mask"),
+        st.session_state.get("bleed_mask"),
+        st.session_state.get("cutline_mask"),
+        st.session_state.get("small_elements_mask"),
+        st.session_state.get("small_elements_report"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(

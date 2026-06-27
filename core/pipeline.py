@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import perf_counter
+import json
 
 from PIL import Image
 
@@ -10,6 +11,7 @@ from core.background import apply_ai_alpha_to_original, has_transparency, remove
 from core.black_remove import remove_black_background
 from core.background_remove import remove_background_opencv, remove_dominant_background
 from core.clean import clean_alpha_with_stats, trim_transparent
+from core.dtf_prepress import DTFPrepressSettings, mask_png_bytes, prepare_dtf
 from core.export import build_export_package
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
@@ -40,6 +42,14 @@ class PipelineSettings:
     white_protection_level: str
     fine_detail_level: str
     safe_mode: bool
+    enable_dtf_prepress: bool
+    remove_white_halo: bool
+    remove_black_halo: bool
+    halo_strength: str
+    expand_edge_px: int
+    bleed_px: int
+    create_cutline: bool
+    min_printable_mm: float
     max_ai_side: int
     upscale: int
     dpi: int
@@ -63,6 +73,7 @@ def process_artwork(
     fine_stats: dict[str, object] | None = None
     fine_mask = None
     nd_result = None
+    dtf_result = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
@@ -109,7 +120,22 @@ def process_artwork(
     work = fit_to_print_size(work, width_cm=settings.width_cm, height_cm=settings.height_cm, dpi=settings.dpi)
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
+    if settings.enable_dtf_prepress:
+        dtf_result = prepare_dtf(work, DTFPrepressSettings(
+            enable_dtf_prepress=settings.enable_dtf_prepress,
+            remove_white_halo=settings.remove_white_halo,
+            remove_black_halo=settings.remove_black_halo,
+            halo_strength=settings.halo_strength,
+            expand_edge_px=settings.expand_edge_px,
+            bleed_px=settings.bleed_px,
+            create_cutline=settings.create_cutline,
+            min_printable_mm=settings.min_printable_mm,
+            dpi=settings.dpi,
+        ))
+        work = dtf_result.image
     metadata_extra = _metadata_extra(nd_result)
+    metadata_extra.update(_dtf_metadata_extra(dtf_result))
+    extra_files = _dtf_extra_files(dtf_result)
     exports = build_export_package(
         work,
         dpi=settings.dpi,
@@ -118,6 +144,7 @@ def process_artwork(
         original=img,
         processing_seconds=round(perf_counter() - started, 3),
         metadata_extra=metadata_extra,
+        extra_files=extra_files,
     )
     return {
         "image": work,
@@ -131,6 +158,16 @@ def process_artwork(
         "restored_mask": nd_result.restored_mask if nd_result else None,
         "art_loss_risk": nd_result.risk if nd_result else None,
         "non_destructive_stats": nd_result.stats if nd_result else None,
+        "dtf_prepress": dtf_result.metadata if dtf_result else None,
+        "alpha_quality": dtf_result.alpha_quality if dtf_result else None,
+        "white_halo_mask": dtf_result.white_halo_mask if dtf_result else None,
+        "black_halo_mask": dtf_result.black_halo_mask if dtf_result else None,
+        "bleed_mask": dtf_result.bleed_mask if dtf_result else None,
+        "cutline_mask": dtf_result.cutline_mask if dtf_result else None,
+        "small_elements_mask": dtf_result.small_elements_mask if dtf_result else None,
+        "small_elements_report": dtf_result.small_elements_report if dtf_result else None,
+        "metadata_extra": metadata_extra,
+        "dtf_extra_files": extra_files,
         **exports,
     }
 
@@ -176,3 +213,26 @@ def _metadata_extra(nd_result) -> dict[str, str]:
         "fondo_eliminado": str(nd_result.stats.get("background_removed", 0)),
         "arte_protegido": str(nd_result.stats.get("artwork_protected", 0)),
     }
+
+
+def _dtf_metadata_extra(dtf_result) -> dict[str, str]:
+    if dtf_result is None:
+        return {}
+    return {
+        "halo_white_risk": str(dtf_result.metadata.get("halo_white_risk", False)),
+        "halo_black_risk": str(dtf_result.metadata.get("halo_black_risk", False)),
+        "small_elements_count": str(dtf_result.metadata.get("small_elements_count", 0)),
+        "cutline_ready": str(dtf_result.metadata.get("cutline_ready", False)),
+    }
+
+
+def _dtf_extra_files(dtf_result) -> dict[str, bytes]:
+    if dtf_result is None:
+        return {}
+    files = {
+        "alpha_quality.json": json.dumps(dtf_result.alpha_quality, indent=2, ensure_ascii=False).encode("utf-8"),
+        "small_elements_report.json": json.dumps(dtf_result.small_elements_report, indent=2, ensure_ascii=False).encode("utf-8"),
+    }
+    if bool(dtf_result.metadata.get("cutline_ready", False)):
+        files["cutline_mask.png"] = mask_png_bytes(dtf_result.cutline_mask)
+    return files

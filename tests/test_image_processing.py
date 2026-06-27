@@ -381,6 +381,14 @@ class ImageProcessingTests(unittest.TestCase):
             white_protection_level="normal",
             fine_detail_level="maxima",
             safe_mode=True,
+            enable_dtf_prepress=True,
+            remove_white_halo=True,
+            remove_black_halo=False,
+            halo_strength="suave",
+            expand_edge_px=1,
+            bleed_px=0,
+            create_cutline=False,
+            min_printable_mm=1.0,
             max_ai_side=1200,
             upscale=1,
             dpi=300,
@@ -391,6 +399,9 @@ class ImageProcessingTests(unittest.TestCase):
         result = process_artwork(img, {"type": "dtf artwork", "use_ai": False}, settings)
 
         self.assertEqual((28, 18), result["image"].size)
+        with ZipFile(BytesIO(result["zip"])) as zf:
+            self.assertIn("alpha_quality.json", zf.namelist())
+            self.assertIn("small_elements_report.json", zf.namelist())
 
     def test_presets_expose_required_modes(self):
         keys = available_mode_keys()
