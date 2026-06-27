@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import streamlit as st
 
+from core.constants import DEFAULT_DPI
 from core.modes import MODES
 
 
@@ -70,7 +71,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
     controls = _advanced_controls(mode)
     with st.sidebar:
         st.header("Output")
-        dpi = st.number_input("DPI", min_value=72, max_value=600, value=300, step=1)
+        dpi = st.number_input("DPI", min_value=72, max_value=600, value=DEFAULT_DPI, step=1)
         width_cm = st.number_input("Final width cm", min_value=0.0, value=0.0, step=0.5)
         height_cm = st.number_input("Final height cm", min_value=0.0, value=0.0, step=0.5)
         st.header("Halftone")

@@ -1,0 +1,28 @@
+.block-container {
+  padding-top: 2rem;
+  max-width: 1450px;
+}
+
+.mc-title {
+  font-size: 3rem;
+  font-weight: 900;
+  margin-bottom: 0;
+}
+
+.mc-tag {
+  color: #d9aa32;
+  text-transform: uppercase;
+  letter-spacing: .18rem;
+  font-weight: 800;
+}
+
+.mc-help {
+  padding: .85rem 1rem;
+  border: 1px solid #3b3b3b;
+  border-radius: 8px;
+  background: #151515;
+}
+
+.stButton button {
+  font-weight: 800;
+}

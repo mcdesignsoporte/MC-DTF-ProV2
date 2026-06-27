@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import streamlit as st
 
@@ -19,30 +20,20 @@ from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_
 from core.modes import MODES
 from core.preview import composite_preview
 from core.resize import fit_to_print_size, upscale_and_sharpen
+from core.constants import SUPPORTED_FORMATS
+from core.version import AUTHOR, NAME, VERSION
 from ui.downloads import render_downloads
 from ui.preview import render_input_summary, render_result_preview
 from ui.sidebar import render_sidebar
 
-APP_VERSION = "V4.0.0"
+APP_VERSION = f"V{VERSION}"
 MODE_KEYS = {mode["key"]: name for name, mode in MODES.items()}
 
-st.set_page_config(page_title=f"MC DTF Pro {APP_VERSION}", page_icon="MC", layout="wide")
+st.set_page_config(page_title=f"{NAME} {APP_VERSION}", page_icon="MC", layout="wide")
+st.markdown(f"<style>{Path('assets/styles.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
-st.markdown(
-    """
-<style>
-.block-container {padding-top: 2rem; max-width: 1450px;}
-.mc-title {font-size: 3rem; font-weight: 900; margin-bottom: 0;}
-.mc-tag {color:#d9aa32; text-transform: uppercase; letter-spacing:.18rem; font-weight:800;}
-.mc-help {padding: .85rem 1rem; border: 1px solid #3b3b3b; border-radius: 8px; background:#151515;}
-.stButton button {font-weight: 800;}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div class="mc-tag">MC Creative Studio</div>', unsafe_allow_html=True)
-st.markdown(f'<h1 class="mc-title">MC DTF Pro {APP_VERSION}</h1>', unsafe_allow_html=True)
+st.markdown(f'<div class="mc-tag">{AUTHOR}</div>', unsafe_allow_html=True)
+st.markdown(f'<h1 class="mc-title">{NAME} {APP_VERSION}</h1>', unsafe_allow_html=True)
 st.caption("Detector automatico, modos inteligentes, limpieza de fondo negro, proteccion de letras y exportacion PNG/PDF/ZIP.")
 
 
@@ -53,7 +44,7 @@ def cached_session():
 
 uploaded_files = st.file_uploader(
     "Upload one or more images",
-    type=["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
+    type=list(SUPPORTED_FORMATS),
     accept_multiple_files=True,
 )
 uploaded = uploaded_files[0] if uploaded_files else None
