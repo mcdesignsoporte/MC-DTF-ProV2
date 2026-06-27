@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from core.detail_protect import detail_protection_mask, protect_dark_detail_alpha
+
 
 def remove_black_background(
     img: Image.Image,
@@ -38,15 +40,9 @@ def remove_black_background(
     new_alpha[near_black] = new_alpha[near_black] * fade[near_black]
 
     if protect_details:
-        # Preserve black strokes that are part of text/vehicle details by detecting adjacency to bright pixels.
-        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-        bright = (gray > max(threshold + 35, 60)).astype(np.uint8) * 255
-        kernel = np.ones((5, 5), np.uint8)
-        around_bright = cv2.dilate(bright, kernel, iterations=1) > 0
-
-        # Very dark pixels close to bright text/splash often form outlines; preserve some alpha.
-        protected = black_core & around_bright
-        new_alpha[protected] = np.maximum(new_alpha[protected], alpha[protected] * 0.45)
+        # Preserve dark strokes that are part of text, logos, chrome edges, or splash details.
+        protected_mask = detail_protection_mask(rgba, threshold=threshold, radius=5)
+        new_alpha = protect_dark_detail_alpha(new_alpha, black_core, protected_mask, strength=0.45)
 
     arr[:, :, 3] = np.clip(new_alpha, 0, 255).astype(np.uint8)
     return Image.fromarray(arr, "RGBA")

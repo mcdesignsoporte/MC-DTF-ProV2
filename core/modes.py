@@ -1,5 +1,5 @@
 MODES = {
-    "📸 Quitar fondo de fotografía": {
+    "Fotografia": {
         "key": "photo_bg",
         "description": "Usa IA para separar un sujeto real del fondo. Ideal para fotos de personas, productos o autos sin letras alrededor.",
         "use_ai": True,
@@ -13,9 +13,9 @@ MODES = {
         "protect_details": True,
         "max_ai_side": 1600,
     },
-    "🧼 Limpiar PNG transparente": {
+    "PNG Transparente": {
         "key": "transparent_png",
-        "description": "No usa IA. Limpia semitransparencias, halos y píxeles basura de un PNG que ya trae transparencia.",
+        "description": "No usa IA. Limpia semitransparencias, halos y pixeles basura de un PNG que ya trae transparencia.",
         "use_ai": False,
         "remove_black": False,
         "clean_alpha": True,
@@ -27,9 +27,9 @@ MODES = {
         "protect_details": True,
         "max_ai_side": 1600,
     },
-    "🛡️ Conservar diseño completo": {
+    "Conservar diseno": {
         "key": "preserve_full",
-        "description": "No usa IA. Mantiene letras, splash, sombras, fondos y efectos. Úsalo cuando NO quieres que borre nada del arte.",
+        "description": "No usa IA. Mantiene letras, splash, sombras, fondos y efectos. Usalo cuando no quieres borrar nada del arte.",
         "use_ai": False,
         "remove_black": False,
         "clean_alpha": False,
@@ -41,7 +41,7 @@ MODES = {
         "protect_details": True,
         "max_ai_side": 1800,
     },
-    "⬛ Quitar fondo negro": {
+    "Fondo negro": {
         "key": "black_bg",
         "description": "Elimina negro casi puro del fondo. Conserva detalles claros, cromados, letras y splash blanco.",
         "use_ai": False,
@@ -55,9 +55,9 @@ MODES = {
         "protect_details": True,
         "max_ai_side": 1800,
     },
-    "🖨️ Preparar para DTF": {
+    "Preparar DTF": {
         "key": "dtf_ready",
-        "description": "Modo final para impresión: limpia alfa, recorta, prepara PNG/PDF y conserva detalles importantes.",
+        "description": "Modo final para impresion: limpia alfa, recorta, prepara PNG/PDF y conserva detalles importantes.",
         "use_ai": False,
         "remove_black": False,
         "clean_alpha": True,
@@ -68,19 +68,5 @@ MODES = {
         "black_threshold": 18,
         "protect_details": True,
         "max_ai_side": 1600,
-    },
-    "🌑 Diseño oscuro / quitar negro puro": {
-        "key": "dark_design",
-        "description": "Especial para diseños tipo Mustang/Silverado: quita solo negro puro, conserva letras, blancos, grises, cromados y efectos.",
-        "use_ai": False,
-        "remove_black": True,
-        "clean_alpha": True,
-        "trim": True,
-        "alpha_cut": 30,
-        "despeckle_area": 1,
-        "edge_contract": 0,
-        "black_threshold": 18,
-        "protect_details": True,
-        "max_ai_side": 1800,
     },
 }

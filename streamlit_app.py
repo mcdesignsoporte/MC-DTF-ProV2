@@ -12,18 +12,22 @@ from core.background import (
 from core.black_remove import remove_black_background
 from core.clean import clean_alpha, trim_transparent
 from core.detector import detect
+from core.export import build_export_package
 from core.halftone import make_halftone
-from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_image, make_zip_bytes
+from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_image
 from core.modes import MODES
 from core.preview import composite_preview
 from core.resize import fit_to_print_size, upscale_and_sharpen
+from ui.downloads import render_downloads
+from ui.preview import render_input_summary, render_result_preview
+from ui.sidebar import render_sidebar
 
 APP_VERSION = "V4.0.0"
 MODE_KEYS = {mode["key"]: name for name, mode in MODES.items()}
 DETECTOR_TO_MODE_KEY = {
     "photo": "photo_bg",
     "png": "transparent_png",
-    "dark": "dark_design",
+    "dark": "black_bg",
     "white": "dtf_ready",
 }
 
@@ -44,9 +48,7 @@ st.markdown(
 
 st.markdown('<div class="mc-tag">MC Creative Studio</div>', unsafe_allow_html=True)
 st.markdown(f'<h1 class="mc-title">MC DTF Pro {APP_VERSION}</h1>', unsafe_allow_html=True)
-st.caption(
-    "Herramienta DTF con detector automatico, limpieza de fondo negro, proteccion basica de letras y exportacion ZIP."
-)
+st.caption("Detector automatico, modos inteligentes, limpieza de fondo negro, proteccion de letras y exportacion PNG/PDF/ZIP.")
 
 
 @st.cache_resource(show_spinner="Cargando modelo IA de fondo...")
@@ -76,39 +78,9 @@ if uploaded and recommended_mode_name and st.session_state.get("last_upload_name
     st.session_state["selected_mode"] = recommended_mode_name
     st.session_state["last_upload_name"] = uploaded.name
 
-with st.sidebar:
-    st.header("Que deseas hacer")
-    mode_names = list(MODES.keys())
-    mode_index = mode_names.index(st.session_state["selected_mode"]) if st.session_state["selected_mode"] in mode_names else 3
-    mode_name = st.radio("Modo de trabajo", mode_names, index=mode_index, key="selected_mode")
-    mode = MODES[mode_name]
-    st.markdown(f"<div class='mc-help'>{mode['description']}</div>", unsafe_allow_html=True)
-
-    st.subheader("Opciones")
-    use_ai = st.checkbox("Usar IA", value=bool(mode["use_ai"]), disabled=not bool(mode["use_ai"]))
-    remove_black = st.checkbox("Quitar negro", value=bool(mode["remove_black"]))
-    clean_enabled = st.checkbox("Limpiar alfa / semitransparencias", value=bool(mode["clean_alpha"]))
-    trim = st.checkbox("Recortar espacio transparente", value=bool(mode["trim"]))
-
-    st.subheader("Ajustes finos")
-    alpha_cut = st.slider("Corte transparencia", 1, 254, int(mode["alpha_cut"]))
-    despeckle_area = st.slider("Basura menor a", 1, 500, int(mode["despeckle_area"]))
-    edge_contract = st.slider("Contraer borde", 0, 4, int(mode["edge_contract"]))
-    black_threshold = st.slider("Umbral negro", 1, 80, int(mode["black_threshold"]))
-    protect_details = st.checkbox("Proteger letras/detalles", value=bool(mode["protect_details"]))
-
-    st.subheader("Tamano / salida")
-    max_ai_side = st.slider("Tamano IA", 800, 2400, int(mode["max_ai_side"]), step=100)
-    upscale = st.selectbox("Alta resolucion", [1, 2, 3, 4], index=0, format_func=lambda x: "Original" if x == 1 else f"{x}x")
-    dpi = st.number_input("DPI", min_value=72, max_value=600, value=300, step=1)
-    width_cm = st.number_input("Ancho final cm", min_value=0.0, value=0.0, step=0.5)
-    height_cm = st.number_input("Alto final cm", min_value=0.0, value=0.0, step=0.5)
-
-    st.subheader("Semitono")
-    make_ht = st.checkbox("Crear semitono", value=False)
-    dot_size = st.slider("Tamano de punto", 4, 40, 8)
-    angle = st.slider("Angulo", 0, 90, 15)
-    invert_ht = st.checkbox("Invertir semitono", value=False)
+options = render_sidebar(st.session_state["selected_mode"])
+mode_name = options.mode_name
+mode = options.mode
 
 if original is None:
     st.info("Sube una imagen para comenzar.")
@@ -117,18 +89,7 @@ if original is None:
 if detected and recommended_mode_name:
     st.success(f"Detector automatico: {detected['name']} -> modo recomendado: {recommended_mode_name}")
 
-left, right = st.columns(2)
-with left:
-    st.subheader("Original")
-    st.image(original, use_container_width=True)
-    st.caption(f"{original.width} x {original.height}px")
-with right:
-    st.subheader("Modo seleccionado")
-    st.success(mode_name)
-    if mode["key"] in ["black_bg", "dark_design"]:
-        st.warning("Para disenos tipo Mustang/Silverado: elimina negro puro y conserva letras, grises, cromados y efectos blancos.")
-    elif mode["key"] == "preserve_full":
-        st.info("Este modo no elimina fondo: conserva todo el diseno completo.")
+render_input_summary(original, mode_name, mode)
 
 if st.button("Procesar imagen", type="primary", use_container_width=True):
     progress = st.progress(0)
@@ -140,9 +101,9 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         log.write("1/7 Preparando imagen...")
         progress.progress(10)
 
-        if use_ai and not has_transparency(work):
+        if options.use_ai and not has_transparency(work):
             log.write("2/7 Quitando fondo con IA...")
-            ai_img = resize_for_ai(work, max_side=max_ai_side)
+            ai_img = resize_for_ai(work, max_side=options.max_ai_side)
             session = cached_session()
             ai_result = remove_background_ai(ai_img, session=session)
             work = apply_ai_alpha_to_original(work, ai_result)
@@ -150,21 +111,21 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
             log.write("2/7 IA saltada...")
         progress.progress(25)
 
-        if remove_black:
+        if options.remove_black:
             log.write("3/7 Quitando fondo negro sin borrar letras...")
-            work = remove_black_background(work, threshold=black_threshold, softness=12, protect_details=protect_details)
+            work = remove_black_background(work, threshold=options.black_threshold, softness=12, protect_details=options.protect_details)
         else:
             log.write("3/7 Quitar negro saltado...")
         progress.progress(45)
 
-        if clean_enabled:
+        if options.clean_enabled:
             log.write("4/7 Limpiando semitransparencias y pixeles basura...")
-            work = clean_alpha(work, alpha_cut=alpha_cut, despeckle_area=despeckle_area, edge_contract=edge_contract)
+            work = clean_alpha(work, alpha_cut=options.alpha_cut, despeckle_area=options.despeckle_area, edge_contract=options.edge_contract)
         else:
             log.write("4/7 Limpieza alfa saltada para conservar diseno...")
         progress.progress(60)
 
-        if trim:
+        if options.trim:
             log.write("5/7 Recortando espacio transparente...")
             work = trim_transparent(work, padding=20)
         else:
@@ -172,32 +133,30 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         progress.progress(70)
 
         log.write("6/7 Ajustando medida/resolucion...")
-        work = fit_to_print_size(work, width_cm=width_cm, height_cm=height_cm, dpi=int(dpi))
-        if upscale > 1:
-            work = upscale_and_sharpen(work, scale=upscale)
+        work = fit_to_print_size(work, width_cm=options.width_cm, height_cm=options.height_cm, dpi=options.dpi)
+        if options.upscale > 1:
+            work = upscale_and_sharpen(work, scale=options.upscale)
         progress.progress(82)
 
         log.write("7/7 Preparando descargas...")
         st.session_state["result_img"] = work
-        st.session_state["result_png"] = image_to_png_bytes(work, dpi=int(dpi))
-        st.session_state["result_pdf"] = image_to_pdf_bytes(work, dpi=int(dpi), white_background=True)
-        zip_files = {
-            "mc_dtf_pro_v4.png": st.session_state["result_png"],
-            "mc_dtf_pro_v4.pdf": st.session_state["result_pdf"],
-        }
+        extra_files = {}
 
-        if make_ht:
-            ht = make_halftone(work, dot_size=dot_size, angle=angle, invert=invert_ht)
+        if options.make_halftone:
+            ht = make_halftone(work, dot_size=options.dot_size, angle=options.angle, invert=options.invert_halftone)
             st.session_state["halftone_img"] = ht
-            st.session_state["halftone_png"] = image_to_png_bytes(ht, dpi=int(dpi))
-            st.session_state["halftone_pdf"] = image_to_pdf_bytes(ht, dpi=int(dpi), white_background=True)
-            zip_files["mc_dtf_pro_v4_semitono.png"] = st.session_state["halftone_png"]
-            zip_files["mc_dtf_pro_v4_semitono.pdf"] = st.session_state["halftone_pdf"]
+            st.session_state["halftone_png"] = image_to_png_bytes(ht, dpi=options.dpi)
+            st.session_state["halftone_pdf"] = image_to_pdf_bytes(ht, dpi=options.dpi, white_background=True)
+            extra_files["mc_dtf_pro_v4_semitono.png"] = st.session_state["halftone_png"]
+            extra_files["mc_dtf_pro_v4_semitono.pdf"] = st.session_state["halftone_pdf"]
         else:
             for key in ["halftone_img", "halftone_png", "halftone_pdf"]:
                 st.session_state.pop(key, None)
 
-        st.session_state["result_zip"] = make_zip_bytes(zip_files)
+        exports = build_export_package(work, dpi=options.dpi, extra_files=extra_files)
+        st.session_state["result_png"] = exports["png"]
+        st.session_state["result_pdf"] = exports["pdf"]
+        st.session_state["result_zip"] = exports["zip"]
         progress.progress(100)
         log.success(f"Listo en {time.time() - t0:.1f} segundos")
 
@@ -212,13 +171,14 @@ if "result_img" in st.session_state:
 
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        st.image(preview, use_container_width=True)
+        render_result_preview(preview)
     with col_b:
-        result = st.session_state["result_img"]
-        st.metric("Tamano final", f"{result.width} x {result.height}px")
-        st.download_button("Descargar ZIP completo", st.session_state["result_zip"], "mc_dtf_pro_v4_entrega.zip", "application/zip", use_container_width=True)
-        st.download_button("Descargar PNG transparente", st.session_state["result_png"], "mc_dtf_pro_v4.png", "image/png", use_container_width=True)
-        st.download_button("Descargar PDF", st.session_state["result_pdf"], "mc_dtf_pro_v4.pdf", "application/pdf", use_container_width=True)
+        render_downloads(
+            st.session_state["result_img"],
+            st.session_state["result_png"],
+            st.session_state["result_pdf"],
+            st.session_state["result_zip"],
+        )
 
     if "halftone_img" in st.session_state:
         st.subheader("Semitono")
