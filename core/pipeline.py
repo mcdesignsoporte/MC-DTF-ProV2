@@ -9,7 +9,7 @@ from PIL import Image
 
 from core.background import apply_ai_alpha_to_original, has_transparency, remove_background_ai, resize_for_ai, should_use_ai
 from core.black_remove import remove_black_background
-from core.background_remove import cleanup_light_background_residue, remove_background_opencv, remove_dominant_background
+from core.background_remove import cleanup_light_background_residue, cleanup_light_edge_matte, remove_background_opencv, remove_dominant_background
 from core.clean import clean_alpha_with_stats, trim_transparent
 from core.dtf_prepress import DTFPrepressSettings, mask_png_bytes, prepare_dtf
 from core.export import build_export_package
@@ -119,6 +119,7 @@ def process_artwork(
         work = _remove_auto_background(work, detection, settings)
         if _should_cleanup_light_residue(settings, detection):
             work = cleanup_light_background_residue(work, tolerance=max(settings.color_tolerance + 18, 58))
+            work = cleanup_light_edge_matte(work, tolerance=max(settings.color_tolerance + 26, 66))
     if settings.protect_white_details and not auto_photo:
         work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
         white_stats = stats.to_dict()

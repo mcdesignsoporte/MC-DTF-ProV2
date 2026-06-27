@@ -8,7 +8,14 @@ import numpy as np
 from PIL import Image
 
 from core.black_remove import remove_black_background
-from core.background_remove import cleanup_light_background_residue, dominant_background_color, light_residue_percent, remove_dominant_background
+from core.background_remove import (
+    cleanup_light_background_residue,
+    cleanup_light_edge_matte,
+    dominant_background_color,
+    edge_light_residue_score,
+    light_residue_percent,
+    remove_dominant_background,
+)
 from core.background import apply_ai_alpha_to_original
 from core.clean import clean_alpha, contract_edge, despeckle, protect_fine_details, safe_despeckle
 from core.detector import detect
@@ -400,6 +407,47 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertLess(after, before)
         self.assertEqual(255, result.getpixel((45, 35))[3])
 
+    def test_light_edge_matte_cleanup_reduces_halo_on_black_preview(self):
+        img = _white_matte_edge_image()
+        before = edge_light_residue_score(img)
+
+        result = cleanup_light_edge_matte(img, background_color=(240, 240, 240), tolerance=76)
+        after = edge_light_residue_score(result)
+
+        self.assertGreater(before, 10)
+        self.assertLess(after, before * 0.45)
+
+    def test_light_edge_matte_cleanup_preserves_internal_white_detail(self):
+        img = _white_matte_edge_image()
+
+        result = cleanup_light_edge_matte(img, background_color=(240, 240, 240), tolerance=76)
+
+        self.assertEqual(255, result.getpixel((45, 35))[3])
+        self.assertEqual((255, 255, 255), result.getpixel((45, 35))[:3])
+
+    def test_light_edge_matte_cleanup_reduces_semitransparent_white_rgb(self):
+        img = _white_matte_edge_image()
+
+        result = cleanup_light_edge_matte(img, background_color=(240, 240, 240), tolerance=76)
+
+        self.assertLess(result.getpixel((22, 28))[3], img.getpixel((22, 28))[3])
+
+    def test_light_edge_matte_cleanup_does_not_degrade_clean_transparent_png(self):
+        img = Image.new("RGBA", (42, 42), (0, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (20, 20), (230, 30, 120, 255)), (11, 11))
+
+        result = cleanup_light_edge_matte(img, background_color=(240, 240, 240), tolerance=76)
+
+        self.assertTrue(np.array_equal(np.array(img), np.array(result)))
+
+    def test_light_edge_matte_cleanup_does_not_alter_dark_artwork(self):
+        img = Image.new("RGBA", (48, 48), (0, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (26, 26), (15, 15, 15, 255)), (11, 11))
+
+        result = cleanup_light_edge_matte(img, background_color=(240, 240, 240), tolerance=76)
+
+        self.assertTrue(np.array_equal(np.array(img), np.array(result)))
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -584,6 +632,22 @@ def _complex_light_background_artwork() -> Image.Image:
         for y in range(8, 64):
             value = 210 + ((x * 3 + y) % 9)
             img.putpixel((x, y), (value, value, value, 255))
+    return img
+
+
+def _white_matte_edge_image() -> Image.Image:
+    img = Image.new("RGBA", (90, 70), (0, 0, 0, 0))
+    for x in range(22, 68):
+        for y in range(18, 54):
+            img.putpixel((x, y), (240, 240, 240, 145))
+    for x in range(25, 65):
+        for y in range(21, 51):
+            img.putpixel((x, y), (220, 40, 120, 255))
+    for x in range(36, 55):
+        for y in range(31, 40):
+            img.putpixel((x, y), (255, 255, 255, 255))
+    for x in range(24, 66):
+        img.putpixel((x, 20), (20, 20, 20, 255))
     return img
 
 

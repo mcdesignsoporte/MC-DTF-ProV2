@@ -103,6 +103,56 @@ def light_residue_percent(
     return float((residue & exterior).mean() * 100)
 
 
+def cleanup_light_edge_matte(
+    img: Image.Image,
+    background_color: tuple[int, int, int] | None = None,
+    tolerance: int = 70,
+    band_px: int = 3,
+) -> Image.Image:
+    """Reduce white matte contamination only along the exterior alpha edge."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    alpha = arr[:, :, 3]
+    band = _alpha_edge_band(alpha, band_px)
+    if not np.any(band):
+        return rgba
+
+    rgb = arr[:, :, :3].astype(np.int16)
+    bg = np.array(background_color or dominant_background_color(rgba), dtype=np.int16)
+    gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2HSV)
+    distance = np.linalg.norm(rgb - bg, axis=2)
+    matte = band & (alpha > 0) & (gray >= 180) & (hsv[:, :, 1] <= 64)
+    matte &= (distance <= tolerance) | ((alpha < 235) & (gray >= 170))
+    if not np.any(matte):
+        return rgba
+
+    out = arr.copy()
+    strong = matte & ((distance <= tolerance * 0.72) | (gray >= 220))
+    weak = matte & ~strong
+    out[strong, 3] = 0
+    out[weak, 3] = np.minimum(out[weak, 3], (out[weak, 3].astype(np.float32) * 0.35).astype(np.uint8))
+    return Image.fromarray(out, "RGBA")
+
+
+def edge_light_residue_score(img: Image.Image, band_px: int = 3) -> float:
+    """Measure visible light matte in the alpha edge when composited on black."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    alpha = arr[:, :, 3]
+    band = _alpha_edge_band(alpha, band_px)
+    total = int(np.count_nonzero(band))
+    if total == 0:
+        return 0.0
+
+    alpha_f = alpha.astype(np.float32) / 255.0
+    comp = (arr[:, :, :3].astype(np.float32) * alpha_f[:, :, None]).astype(np.uint8)
+    gray = cv2.cvtColor(comp, cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2HSV)
+    residue = band & (alpha > 0) & (gray >= 84) & (hsv[:, :, 1] <= 72)
+    return round(float(np.count_nonzero(residue) / total * 100), 3)
+
+
 def remove_background_opencv(img: Image.Image, protect_details: bool = True) -> Image.Image:
     """Segment non-uniform backgrounds using GrabCut seeded by image borders."""
     rgba = img.convert("RGBA")
@@ -133,6 +183,16 @@ def _reachable_from_edges(mask: np.ndarray) -> np.ndarray:
         if work[point[1], point[0]]:
             cv2.floodFill(work, flood, point, 128)
     return work == 128
+
+
+def _alpha_edge_band(alpha: np.ndarray, radius: int) -> np.ndarray:
+    opaque = alpha > 20
+    transparent = alpha <= 20
+    if not np.any(opaque) or not np.any(transparent):
+        return np.zeros_like(alpha, dtype=bool)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+    near_transparent = cv2.dilate(transparent.astype(np.uint8), kernel, iterations=1).astype(bool)
+    return opaque & near_transparent
 
 
 def _fade_alpha(alpha: np.ndarray, distance: np.ndarray, remove_mask: np.ndarray, tolerance: int, softness: int) -> np.ndarray:
