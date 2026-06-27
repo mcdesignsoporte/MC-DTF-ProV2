@@ -151,7 +151,7 @@ def _classify(m: dict[str, float]) -> tuple[str, str, bool, float]:
     if m["black_percent"] > 55 and m["text_score"] < 65:
         return "Fondo negro", "black_bg", False, min(96.0, 60 + m["black_percent"] * 0.45)
     if m["background_uniformity"] > 62 and m["edge_density"] > 2:
-        return "Fondo de color", "professional_safe", False, min(95.0, 50 + m["background_uniformity"] * 0.5)
+        return "Fondo de color", "color_bg", False, min(95.0, 50 + m["background_uniformity"] * 0.5)
     if m["black_percent"] > 32 and (m["shadow_score"] > 8 or m["splash_score"] > 18):
         return "Diseno oscuro", "dark_artwork", False, 84.0
     if m["white_percent"] > 68 and m["edge_density"] > 3:

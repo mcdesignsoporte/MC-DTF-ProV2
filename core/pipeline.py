@@ -99,11 +99,12 @@ def process_artwork(
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
     auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
+    auto_removable_background = settings.mode_key == "auto" and detection.get("recommended_mode") in {"black_bg", "color_bg"}
     if (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
-    use_non_destructive = settings.safe_mode or settings.mode_key == "professional_safe"
+    use_non_destructive = (settings.safe_mode or settings.mode_key == "professional_safe") and not auto_removable_background
     if use_non_destructive and not auto_photo:
         nd_result = non_destructive_clean(
             work,

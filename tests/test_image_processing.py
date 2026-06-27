@@ -329,6 +329,35 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual("transparent_png", result["recommended_mode"])
         self.assertFalse(result["use_ai"])
 
+    def test_detector_routes_uniform_light_background_to_color_removal(self):
+        img = _light_background_artwork()
+
+        result = detect(img)
+
+        self.assertEqual("Fondo de color", result["type"])
+        self.assertEqual("color_bg", result["recommended_mode"])
+        self.assertNotEqual("professional_safe", result["recommended_mode"])
+        self.assertEqual(0.0, result["transparency_percent"])
+
+    def test_automatic_mode_removes_uniform_light_background(self):
+        img = _light_background_artwork()
+        detection = detect(img)
+
+        result = process_artwork(img, detection, _auto_settings())["image"]
+        alpha = np.array(result.getchannel("A"))
+
+        self.assertGreater(np.mean(alpha < 250) * 100, 20)
+        self.assertLess(alpha[0, 0], 10)
+
+    def test_automatic_mode_keeps_internal_white_details(self):
+        img = _light_background_artwork()
+        detection = detect(img)
+
+        result = process_artwork(img, detection, _auto_settings())["image"]
+
+        self.assertEqual(255, result.getpixel((42, 34))[3])
+        self.assertGreater(result.getpixel((42, 34))[0], 240)
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -460,3 +489,60 @@ def _synthetic_car() -> Image.Image:
     for x in range(18, 84):
         img.putpixel((x, 33), (20, 20, 20, 255))
     return img
+
+
+def _light_background_artwork() -> Image.Image:
+    img = Image.new("RGBA", (90, 70), (240, 240, 240, 255))
+    for x in range(24, 66):
+        for y in range(20, 52):
+            img.putpixel((x, y), (210, 30, 80, 255))
+    for x in range(34, 54):
+        for y in range(30, 39):
+            img.putpixel((x, y), (255, 255, 255, 255))
+    for x in range(22, 68):
+        img.putpixel((x, 19), (25, 25, 25, 255))
+    return img
+
+
+def _auto_settings() -> PipelineSettings:
+    return PipelineSettings(
+        mode_key="auto",
+        use_ai=False,
+        remove_black=False,
+        remove_color=True,
+        clean_enabled=True,
+        trim=False,
+        alpha_cut=58,
+        despeckle_area=2,
+        edge_contract=0,
+        black_threshold=24,
+        black_level="normal",
+        color_tolerance=44,
+        protect_details=True,
+        protect_white_details=True,
+        white_protection_level="maxima",
+        fine_detail_level="maxima",
+        safe_mode=True,
+        enable_dtf_prepress=False,
+        remove_white_halo=False,
+        remove_black_halo=False,
+        halo_strength="suave",
+        expand_edge_px=0,
+        bleed_px=0,
+        create_cutline=False,
+        min_printable_mm=1.0,
+        logo_detect_colors=False,
+        logo_reduce_colors=False,
+        logo_black_to_transparent=False,
+        logo_white_to_transparent=False,
+        logo_unify_colors=False,
+        logo_separate_colors=False,
+        logo_export_layers=False,
+        logo_max_colors=8,
+        logo_color_tolerance=24,
+        max_ai_side=1200,
+        upscale=1,
+        dpi=300,
+        width_cm=0,
+        height_cm=0,
+    )
