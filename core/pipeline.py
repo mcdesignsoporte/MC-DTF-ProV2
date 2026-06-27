@@ -9,7 +9,7 @@ from PIL import Image
 from core.background import apply_ai_alpha_to_original, has_transparency, remove_background_ai, resize_for_ai, should_use_ai
 from core.black_remove import remove_black_background
 from core.background_remove import remove_background_opencv, remove_dominant_background
-from core.clean import clean_alpha, trim_transparent
+from core.clean import clean_alpha_with_stats, trim_transparent
 from core.export import build_export_package
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
@@ -37,6 +37,7 @@ class PipelineSettings:
     protect_details: bool
     protect_white_details: bool
     white_protection_level: str
+    fine_detail_level: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -57,8 +58,11 @@ def process_artwork(
     work = img.convert("RGBA")
     white_stats: dict[str, object] | None = None
     white_mask = None
+    fine_stats: dict[str, object] | None = None
+    fine_mask = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
+    fine_level = _fine_level(settings, detection)
     auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
     if (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
@@ -72,14 +76,29 @@ def process_artwork(
         work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
         white_stats = stats.to_dict()
     if settings.clean_enabled:
-        work = clean_alpha(work, alpha_cut=settings.alpha_cut, despeckle_area=settings.despeckle_area, edge_contract=settings.edge_contract)
+        work, stats, fine_mask = clean_alpha_with_stats(
+            work,
+            alpha_cut=settings.alpha_cut,
+            despeckle_area=settings.despeckle_area,
+            edge_contract=settings.edge_contract,
+            protect_details=settings.protect_details,
+            fine_detail_level=fine_level,
+        )
+        fine_stats = stats.to_dict()
     if settings.trim:
         work = trim_transparent(work, padding=20)
     work = fit_to_print_size(work, width_cm=settings.width_cm, height_cm=settings.height_cm, dpi=settings.dpi)
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
     exports = build_export_package(work, dpi=settings.dpi, prefix=prefix, mode=settings.mode_key, original=img, processing_seconds=round(perf_counter() - started, 3))
-    return {"image": work, "white_protection": white_stats, "white_mask": white_mask, **exports}
+    return {
+        "image": work,
+        "white_protection": white_stats,
+        "white_mask": white_mask,
+        "fine_detail_protection": fine_stats,
+        "fine_detail_mask": fine_mask,
+        **exports,
+    }
 
 
 def _remove_auto_background(img: Image.Image, detection: dict[str, object], settings: PipelineSettings) -> Image.Image:
@@ -101,3 +120,14 @@ def _white_level(settings: PipelineSettings, detection: dict[str, object]) -> st
     if detected_level in {"maxima", "maxima_auto"}:
         return "maxima"
     return settings.white_protection_level
+
+
+def _fine_level(settings: PipelineSettings, detection: dict[str, object]) -> str:
+    """Choose manual or automatic fine-detail protection level."""
+    kind = str(detection.get("type", "")).lower()
+    mode = str(detection.get("recommended_mode", "")).lower()
+    if any(term in kind for term in ["logo", "diseno", "sticker", "caricatura", "anime", "vector"]):
+        return "maxima"
+    if mode in {"preserve_artwork", "color_bg", "black_bg", "dark_artwork"}:
+        return "maxima"
+    return settings.fine_detail_level

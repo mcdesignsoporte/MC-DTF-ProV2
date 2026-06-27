@@ -28,6 +28,7 @@ class ProcessingOptions:
     protect_details: bool
     protect_white_details: bool
     white_protection_level: str
+    fine_detail_level: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -137,11 +138,10 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
             int(mode.get("black_threshold", 20)),
         )
 
-        despeckle_area = col_c.slider(
-            "Basura menor a",
-            1,
-            500,
-            int(mode.get("despeckle_area", 2)),
+        noise_level = col_c.selectbox(
+            "Limpieza de basura",
+            ["Muy suave", "Suave", "Normal", "Fuerte"],
+            index=2,
         )
 
         edge_contract = col_a.slider(
@@ -192,11 +192,16 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
             ["Suave", "Normal", "Maxima"],
             index=1,
         )
+        fine_detail_level = st.selectbox(
+            "Proteccion de detalles finos",
+            ["Suave", "Normal", "Maxima"],
+            index=2,
+        )
 
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
-        "despeckle_area": despeckle_area,
+        "despeckle_area": _noise_area(noise_level),
         "edge_contract": edge_contract,
         "max_ai_side": max_ai_side,
         "color_tolerance": color_tolerance,
@@ -205,6 +210,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "protect_details": protect_details,
         "protect_white_details": protect_white_details,
         "white_protection_level": white_protection_level.lower(),
+        "fine_detail_level": fine_detail_level.lower(),
     }
 
 
@@ -262,6 +268,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         protect_details=bool(controls["protect_details"]),
         protect_white_details=bool(controls["protect_white_details"]),
         white_protection_level=str(controls["white_protection_level"]),
+        fine_detail_level=str(controls["fine_detail_level"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),
@@ -272,3 +279,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         angle=int(angle),
         invert_halftone=bool(invert_halftone),
     )
+
+
+def _noise_area(label: str) -> int:
+    return {"Muy suave": 1, "Suave": 3, "Normal": 9, "Fuerte": 24}.get(label, 9)

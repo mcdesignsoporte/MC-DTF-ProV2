@@ -79,3 +79,12 @@
 - Added Blancos protegidos QA view with green mask preview.
 - Added white protection statistics: detected, protected, removed, and protected percentage.
 - Added unit tests for white letters, eyes, reflections, white background removal, and protection speed.
+
+## V4.4.0
+
+- Added fine detail protection for thin lines, contours, splashes, decorative dots, shadows, letter texture, and internal artwork details.
+- Replaced aggressive small-component cleanup with safe despeckle based on the main artwork mask, Canny edges, saturation, contrast, and connected components.
+- Added protected-detail QA view with green mask overlay.
+- Added statistics for fine details detected, details protected, noise removed, and components removed.
+- Converted technical trash cleanup into safe levels: Muy suave, Suave, Normal, and Fuerte.
+- Added tests for small splashes, thin lines, decorative dots, isolated noise, contours, and letter texture.

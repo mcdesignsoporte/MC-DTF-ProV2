@@ -31,11 +31,13 @@ def render_result_workspace(
     png_bytes: bytes,
     white_mask: object | None = None,
     white_stats: dict[str, object] | None = None,
+    fine_mask: object | None = None,
+    fine_stats: dict[str, object] | None = None,
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
     background = st.selectbox("Fondo de vista", BACKGROUNDS, index=0)
-    tabs = st.tabs(["Resultado final", "Antes / Despues", "Cambios de transparencia", "Alpha", "Blancos protegidos", "Original"])
+    tabs = st.tabs(["Resultado final", "Antes / Despues", "Cambios de transparencia", "Alpha", "Blancos protegidos", "Detalles protegidos", "Original"])
 
     with tabs[0]:
         st.image(composite_preview(result, background), use_container_width=True)
@@ -48,12 +50,15 @@ def render_result_workspace(
     with tabs[4]:
         st.image(_white_mask_preview(original, white_mask), use_container_width=True)
     with tabs[5]:
+        st.image(_green_mask_preview(original, fine_mask), use_container_width=True)
+    with tabs[6]:
         st.image(composite_preview(original, background), use_container_width=True)
 
     left, right = st.columns([1, 1])
     with left:
         render_technical_info(result, dpi, png_bytes, report.status)
         render_white_stats(white_stats)
+        render_fine_detail_stats(fine_stats)
     with right:
         render_quality(report)
         if white_stats and bool(white_stats.get("possible_detail_loss", False)):
@@ -83,10 +88,14 @@ def _format_size(size: int) -> str:
 
 
 def _white_mask_preview(original: Image.Image, white_mask: object | None) -> Image.Image:
-    if white_mask is None:
+    return _green_mask_preview(original, white_mask)
+
+
+def _green_mask_preview(original: Image.Image, mask: object | None) -> Image.Image:
+    if mask is None:
         return composite_preview(Image.new("RGBA", original.size, (0, 0, 0, 0)), "Transparente")
     base = composite_preview(original, "Playera negra")
-    overlay = mask_preview(white_mask, original.size)
+    overlay = mask_preview(mask, original.size)
     thumb = preview_thumbnail(overlay, VIEWPORT, padding=40)
     x = (base.width - thumb.width) // 2
     y = (base.height - thumb.height) // 2
@@ -103,3 +112,14 @@ def render_white_stats(stats: dict[str, object] | None) -> None:
     st.metric("Blancos protegidos", str(stats.get("white_protected", 0)))
     st.metric("Blancos eliminados", str(stats.get("white_removed", 0)))
     st.metric("Porcentaje protegido", f"{stats.get('protected_percent', 0)}%")
+
+
+def render_fine_detail_stats(stats: dict[str, object] | None) -> None:
+    """Render fine detail protection statistics."""
+    if not stats:
+        return
+    st.subheader("Detalles protegidos")
+    st.metric("Detalles finos detectados", str(stats.get("fine_details_detected", 0)))
+    st.metric("Detalles protegidos", str(stats.get("details_protected", 0)))
+    st.metric("Ruido eliminado", str(stats.get("noise_removed", 0)))
+    st.metric("Componentes eliminados", str(stats.get("components_removed", 0)))

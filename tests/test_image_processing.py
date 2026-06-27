@@ -10,7 +10,7 @@ from PIL import Image
 from core.black_remove import remove_black_background
 from core.background_remove import dominant_background_color, remove_dominant_background
 from core.background import apply_ai_alpha_to_original
-from core.clean import clean_alpha, contract_edge, despeckle
+from core.clean import clean_alpha, contract_edge, despeckle, protect_fine_details, safe_despeckle
 from core.detector import detect
 from core.halftone import make_halftone
 from core.image_io import image_to_png_bytes, make_zip_bytes
@@ -187,6 +187,55 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual(0, result.getpixel((1, 1))[3])
         self.assertEqual(255, result.getpixel((6, 6))[3])
 
+    def test_safe_despeckle_keeps_small_splashes_near_design(self):
+        img = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (30, 30), (220, 30, 30, 255)), (25, 25))
+        for point in [(20, 24), (21, 26), (58, 30)]:
+            img.putpixel(point, (255, 210, 40, 255))
+        arr = np.array(img)
+        alpha, mask, stats = safe_despeckle(arr, arr[:, :, 3], min_area=8, level="maxima")
+
+        self.assertEqual(255, alpha[24, 20])
+        self.assertEqual(255, alpha[26, 21])
+        self.assertTrue(mask[24, 20])
+        self.assertEqual(0, stats.components_removed)
+
+    def test_safe_despeckle_removes_isolated_noise_far_from_design(self):
+        img = Image.new("RGBA", (90, 90), (0, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (36, 36), (50, 100, 230, 255)), (28, 28))
+        img.putpixel((2, 2), (80, 80, 80, 255))
+        arr = np.array(img)
+        alpha, _, stats = safe_despeckle(arr, arr[:, :, 3], min_area=8, level="normal")
+
+        self.assertEqual(0, alpha[2, 2])
+        self.assertGreaterEqual(stats.components_removed, 1)
+
+    def test_fine_detail_mask_keeps_thin_lines_and_decorative_dots(self):
+        img = Image.new("RGBA", (90, 90), (0, 0, 0, 0))
+        for x in range(20, 70):
+            img.putpixel((x, 45), (255, 255, 255, 255))
+        img.alpha_composite(Image.new("RGBA", (24, 24), (0, 0, 0, 255)), (33, 33))
+        img.putpixel((60, 35), (240, 240, 255, 255))
+        arr = np.array(img)
+
+        mask = protect_fine_details(arr, arr[:, :, 3], level="maxima")
+
+        self.assertTrue(mask[45, 22])
+        self.assertTrue(mask[35, 60])
+
+    def test_safe_despeckle_keeps_letter_texture_and_contours(self):
+        img = Image.new("RGBA", (100, 70), (0, 0, 0, 0))
+        for x in range(20, 80):
+            for y in range(25, 45):
+                img.putpixel((x, y), (255, 255, 255, 255))
+        for x in range(28, 72, 4):
+            img.putpixel((x, 35), (30, 30, 30, 255))
+        arr = np.array(img)
+        alpha, mask, _ = safe_despeckle(arr, arr[:, :, 3], min_area=12, level="maxima")
+
+        self.assertEqual(255, alpha[35, 28])
+        self.assertTrue(mask[35, 28])
+
     def test_zip_contains_generated_assets(self):
         img = Image.new("RGBA", (8, 8), (255, 0, 0, 255))
         png_payload = image_to_png_bytes(img)
@@ -266,6 +315,7 @@ class ImageProcessingTests(unittest.TestCase):
             protect_details=True,
             protect_white_details=True,
             white_protection_level="normal",
+            fine_detail_level="maxima",
             max_ai_side=1200,
             upscale=1,
             dpi=300,

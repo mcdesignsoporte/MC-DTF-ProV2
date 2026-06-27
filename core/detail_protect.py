@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from core.clean import build_main_artwork_mask, protect_fine_details
+
 
 def detail_protection_mask(img: Image.Image, threshold: int = 24, radius: int = 5) -> np.ndarray:
     """Find letters, white splashes, smoke, logos, and thin contours near dark pixels."""
@@ -35,3 +37,16 @@ def keep_connected_dark_details(remove_mask: np.ndarray, protect_mask: np.ndarra
         if np.any(component & protect_mask):
             safe_remove[component] = False
     return safe_remove
+
+
+def fine_detail_protection_mask(img: Image.Image, level: str = "maxima") -> np.ndarray:
+    """Return protected fine details for QA and safe cleanup."""
+    rgba = np.array(img.convert("RGBA"))
+    alpha = rgba[:, :, 3]
+    return protect_fine_details(rgba, alpha, level=level)
+
+
+def main_artwork_protection_mask(img: Image.Image, level: str = "maxima") -> np.ndarray:
+    """Return the expanded main-artwork zone."""
+    alpha = np.array(img.convert("RGBA").getchannel("A"))
+    return build_main_artwork_mask(alpha, level=level)
