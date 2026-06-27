@@ -11,7 +11,7 @@ from core.modes import MODES
 from core.preview import composite_preview
 from core.resize import fit_to_print_size, upscale_and_sharpen
 
-st.set_page_config(page_title="MC DTF Pro v3", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="MC DTF Pro V4.0.0", page_icon="🎨", layout="wide")
 
 st.markdown(
     """
@@ -27,7 +27,7 @@ st.markdown(
 )
 
 st.markdown('<div class="mc-tag">MC Creative Studio</div>', unsafe_allow_html=True)
-st.markdown('<h1 class="mc-title">MC DTF Pro v3</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="mc-title">MC DTF Pro V4.0.0</h1>', unsafe_allow_html=True)
 st.caption("Herramienta DTF con modos separados: fotografía, PNG transparente, diseño completo, fondo negro y preparación para impresión.")
 
 
