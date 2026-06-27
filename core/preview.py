@@ -1,26 +1,23 @@
 from PIL import Image
 
 
-def checkerboard(size, square=20):
-    w, h = size
-    img = Image.new("RGB", size, (230, 230, 230))
-    pix = img.load()
-    for y in range(h):
-        for x in range(w):
-            if ((x // square) + (y // square)) % 2 == 0:
-                pix[x, y] = (190, 190, 190)
-    return img
-
-
 def composite_preview(img: Image.Image, mode: str = "Transparente") -> Image.Image:
-    rgba = img.convert("RGBA")
-    if mode == "Negro":
-        bg = Image.new("RGB", rgba.size, (10, 10, 10))
-    elif mode == "Blanco":
-        bg = Image.new("RGB", rgba.size, (255, 255, 255))
-    elif mode == "Gris":
-        bg = Image.new("RGB", rgba.size, (120, 120, 120))
+    img = img.convert("RGBA")
+    m = (mode or "").lower()
+    if "negro" in m:
+        bg = Image.new("RGBA", img.size, (0, 0, 0, 255))
+    elif "blanco" in m:
+        bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    elif "gris" in m:
+        bg = Image.new("RGBA", img.size, (150, 150, 150, 255))
     else:
-        bg = checkerboard(rgba.size)
-    bg.paste(rgba, mask=rgba.getchannel("A"))
-    return bg
+        # checkerboard
+        tile = 24
+        bg = Image.new("RGBA", img.size, (230, 230, 230, 255))
+        px = bg.load()
+        for y in range(img.height):
+            for x in range(img.width):
+                if ((x // tile) + (y // tile)) % 2:
+                    px[x, y] = (190, 190, 190, 255)
+    bg.alpha_composite(img)
+    return bg.convert("RGB")

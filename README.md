@@ -1,36 +1,29 @@
-# MC DTF Pro v2
+# MC DTF Pro v3
 
-Aplicación web en Streamlit para preparar imágenes para DTF.
+Herramienta web en Streamlit para preparar imágenes para DTF.
 
-## Funciones
+## Modos incluidos
 
-- Subir imagen PNG/JPG/WEBP.
-- Quitar fondo con IA usando rembg.
-- Saltar IA si ya es PNG transparente.
-- Limpieza de semitransparencias.
-- Limpieza de píxeles basura.
-- Reducción de halos por contracción de borde.
-- Presets: Caricatura, General, Logo fuerte.
-- Exportar PNG transparente.
-- Exportar PDF a 300 DPI.
-- Generar semitono básico.
-- Vista previa sobre fondo transparente, negro, blanco y gris.
+- Quitar fondo de fotografía
+- Limpiar PNG transparente
+- Conservar diseño completo
+- Quitar fondo negro
+- Preparar para DTF
 
-## Deploy en Streamlit Community Cloud
-
-Main file path:
+## Archivo principal en Streamlit
 
 ```text
 streamlit_app.py
 ```
 
-## Desarrollo local
+## Deploy
 
-```bash
-pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
+Sube todo el contenido a GitHub y en Streamlit Community Cloud selecciona:
 
-## Marca
+- Repository: tu repo
+- Branch: main
+- Main file path: `streamlit_app.py`
 
-Desarrollado para MC Creative Studio.
+## Nota importante
+
+Para diseños completos con letras, fondos, splash o efectos, usa **Conservar diseño completo**. No uses IA porque la IA puede borrar partes del diseño.
