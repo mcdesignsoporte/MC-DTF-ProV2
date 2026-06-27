@@ -27,3 +27,14 @@ def remove_background_ai(img: Image.Image, session=None) -> Image.Image:
     from rembg import remove
     img = img.convert("RGBA")
     return remove(img, session=session).convert("RGBA")
+
+
+def apply_ai_alpha_to_original(original: Image.Image, ai_result: Image.Image) -> Image.Image:
+    original = original.convert("RGBA")
+    alpha = ai_result.convert("RGBA").getchannel("A")
+    if alpha.size != original.size:
+        alpha = alpha.resize(original.size, Image.Resampling.LANCZOS)
+
+    result = original.copy()
+    result.putalpha(alpha)
+    return result

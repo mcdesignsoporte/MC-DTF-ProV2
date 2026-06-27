@@ -2,7 +2,7 @@ import time
 
 import streamlit as st
 
-from core.background import get_rembg_session, has_transparency, remove_background_ai, resize_for_ai
+from core.background import apply_ai_alpha_to_original, get_rembg_session, has_transparency, remove_background_ai, resize_for_ai
 from core.black_remove import remove_black_background
 from core.clean import clean_alpha, trim_transparent
 from core.halftone import make_halftone
@@ -107,7 +107,8 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
             log.write("2/7 Quitando fondo con IA...")
             ai_img = resize_for_ai(work, max_side=max_ai_side)
             session = cached_session()
-            work = remove_background_ai(ai_img, session=session)
+            ai_result = remove_background_ai(ai_img, session=session)
+            work = apply_ai_alpha_to_original(work, ai_result)
         else:
             log.write("2/7 IA saltada...")
         progress.progress(25)
