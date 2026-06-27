@@ -1,39 +1,59 @@
-# MC DTF Pro V4.0.0
+# MC DTF Pro V4
 
-Aplicacion Streamlit para preparar imagenes DTF con detector automatico, modos inteligentes, limpieza de fondo negro, proteccion basica de letras y exportacion lista para produccion.
+Professional Streamlit software for preparing DTF artwork. The app is designed for Streamlit Cloud and Python 3.12, with a modular architecture and a production workflow for single images and batch processing.
 
-## Funciones V4.0.0
+## Features
 
-- Interfaz profesional en Streamlit.
-- Detector automatico del tipo de imagen.
-- Modos inteligentes: Fotografia, PNG Transparente, Conservar diseno, Fondo negro y Preparar DTF.
-- Eliminacion inteligente de fondo negro.
-- Proteccion basica de letras, logos y detalles claros.
-- Vista previa con fondos transparente, negro, blanco y gris.
-- Exportacion PNG transparente, PDF y ZIP completo.
-- Preparado para Streamlit Cloud y Python 3.12.
+- Smart image detection: photograph, transparent PNG, black background, white background, logo, design, dark artwork, and DTF artwork.
+- Automatic recommendation for the safest processing mode.
+- AI background removal only for photographs.
+- OpenCV black background removal with protection for letters, logos, splashes, smoke, thin contours, outlines, and shadows.
+- Commercial previews: Transparent, Black shirt, White shirt, Sticker, Mug, Beer mug, and Hoodie.
+- PNG, PDF, and ZIP export at 300 DPI with PNG metadata.
+- Multiple-image batch processing with a batch ZIP export.
+- Advanced Settings hidden by default.
+- Tests for alpha handling, black removal, export, and transparent PNG detection.
 
-## Ejecutar local
+## Run Locally
 
 ```bash
 python -m pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Estructura
+## Streamlit Cloud
+
+Use:
+
+- Python: 3.12
+- Main file: `streamlit_app.py`
+- Requirements: `requirements.txt`
+
+## Architecture
 
 ```text
 streamlit_app.py
 requirements.txt
+README.md
+CHANGELOG.md
+MIGRATION.md
 .streamlit/config.toml
+assets/styles.css
 core/
 ui/
-assets/
-examples/
 tests/
 ```
 
-## Verificacion
+## Core Modules
+
+- `core/detector.py`: analyzes transparency, black percentage, white percentage, edge density, estimated processing time, and resolution.
+- `core/background.py`: gates rembg usage to photograph workflows only.
+- `core/black_remove.py`: removes pure background black without AI.
+- `core/detail_protect.py`: protects letters, logos, splashes, smoke, outlines, shadows, and thin contours.
+- `core/export.py`: exports PNG, PDF, and ZIP with 300 DPI metadata.
+- `core/preview.py`: creates fast preview composites without changing export resolution.
+
+## Verify
 
 ```bash
 python -m compileall streamlit_app.py core ui tests
@@ -41,7 +61,8 @@ python -m unittest tests.test_image_processing
 python -m pip check
 ```
 
-## Roadmap
+## Quality Rules
 
-- V4.1: procesamiento por lotes, comparador antes/despues y vista previa sobre playera, taza y sticker.
-- V4.2: gang sheet automatico, calculo de costos, historial y optimizacion de velocidad.
+- Exported images preserve original dimensions unless the user explicitly requests print sizing or upscaling.
+- AI inference uses reduced resolution only during inference and restores alpha to the original image size.
+- The app avoids exposing advanced sliders in the main workflow.
