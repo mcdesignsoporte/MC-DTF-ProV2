@@ -48,17 +48,8 @@ Detection now also includes:
 - `core/export.py`
 - `core/logger.py`
 - `core/presets.py`
-- `core/background_remove.py`
 - Batch processing from the main uploader.
 - Preview modes for product surfaces.
-
-### V4.1.0
-
-- `auto` mode can choose AI, color removal, black removal, alpha cleaning, or OpenCV segmentation.
-- New stable mode key: `color_bg`.
-- Detection payload includes:
-  - `dominant_color`
-  - `background_uniformity`
 
 ### Deployment
 

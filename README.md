@@ -6,7 +6,6 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 
 - Smart image detection: photograph, transparent PNG, black background, white background, logo, design, dark artwork, and DTF artwork.
 - Spanish commercial workflow modes: Fotografia, PNG Transparente, Conservar Diseno, Quitar Fondo Negro, Diseno Oscuro, and Preparar DTF.
-- Automatic background removal for black, white, gray, green, blue, red, yellow, purple, dominant colors, mild gradients, and moderately noisy backgrounds.
 - Detection metrics for resolution, transparency, background, black percentage, text, logo, noise, splash, and shadow signals.
 - Automatic recommendation for the safest processing mode.
 - AI background removal only for photographs.
@@ -53,7 +52,6 @@ tests/
 - `core/detector.py`: analyzes transparency, black percentage, white percentage, edge density, text, logo, noise, splash, shadow, estimated processing time, and resolution.
 - `core/background.py`: gates rembg usage to photograph workflows only.
 - `core/black_remove.py`: removes pure background black without AI.
-- `core/background_remove.py`: removes dominant color, chroma, gradient-like, and OpenCV-segmented backgrounds.
 - `core/detail_protect.py`: protects letters, logos, splashes, smoke, outlines, shadows, and thin contours.
 - `core/export.py`: exports PNG, PDF, and ZIP with 300 DPI metadata.
 - `core/logger.py`: centralized application logging.
