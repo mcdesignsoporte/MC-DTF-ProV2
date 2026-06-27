@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 
 from core.black_remove import remove_black_background
+from core.background_remove import dominant_background_color, remove_dominant_background
 from core.background import apply_ai_alpha_to_original
 from core.clean import clean_alpha, contract_edge, despeckle
 from core.detector import detect
@@ -55,6 +56,7 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertEqual("black_bg", result["recommended_mode"])
         self.assertEqual("negro", result["background"])
+        self.assertIn("dominant_color", result)
 
     def test_black_removal_keeps_bright_letter_details(self):
         img = Image.new("RGBA", (32, 32), (0, 0, 0, 255))
@@ -66,6 +68,18 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertEqual(0, result.getpixel((0, 0))[3])
         self.assertEqual(255, result.getpixel((16, 16))[3])
+
+    def test_color_background_removal_removes_green_edges(self):
+        img = Image.new("RGBA", (40, 40), (0, 180, 0, 255))
+        for x in range(12, 28):
+            for y in range(12, 28):
+                img.putpixel((x, y), (255, 255, 255, 255))
+
+        result = remove_dominant_background(img, tolerance=45)
+
+        self.assertLess(abs(dominant_background_color(img)[1] - 180), 8)
+        self.assertEqual(0, result.getpixel((0, 0))[3])
+        self.assertGreater(result.getpixel((20, 20))[3], 180)
 
     def test_clean_alpha_removes_small_trash(self):
         img = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
@@ -123,12 +137,14 @@ class ImageProcessingTests(unittest.TestCase):
             mode_key="preserve_artwork",
             use_ai=False,
             remove_black=False,
+            remove_color=False,
             clean_enabled=False,
             trim=False,
             alpha_cut=70,
             despeckle_area=1,
             edge_contract=0,
             black_threshold=24,
+            color_tolerance=42,
             protect_details=True,
             max_ai_side=1200,
             upscale=1,
