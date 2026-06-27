@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from core.detail_protect import detail_protection_mask, restore_protected_alpha
+
+
+def dominant_background_color(img: Image.Image, border: int = 16) -> tuple[int, int, int]:
+    """Estimate the background color from image borders."""
+    rgb = np.array(img.convert("RGB"))
+    h, w, _ = rgb.shape
+    b = max(2, min(border, h // 4, w // 4))
+    samples = np.concatenate([rgb[:b].reshape(-1, 3), rgb[-b:].reshape(-1, 3), rgb[:, :b].reshape(-1, 3), rgb[:, -b:].reshape(-1, 3)])
+    quantized = (samples // 16) * 16
+    colors, counts = np.unique(quantized, axis=0, return_counts=True)
+    return tuple(int(v) for v in colors[int(np.argmax(counts))])
+
+
+def background_uniformity(img: Image.Image, color: tuple[int, int, int], tolerance: int = 34) -> float:
+    """Return how much of the border matches the estimated background."""
+    rgb = np.array(img.convert("RGB"))
+    h, w, _ = rgb.shape
+    b = max(2, min(16, h // 4, w // 4))
+    border = np.concatenate([rgb[:b].reshape(-1, 3), rgb[-b:].reshape(-1, 3), rgb[:, :b].reshape(-1, 3), rgb[:, -b:].reshape(-1, 3)])
+    distance = np.linalg.norm(border.astype(np.int16) - np.array(color, dtype=np.int16), axis=1)
+    return float((distance <= tolerance).mean() * 100)
+
+
+def remove_dominant_background(
+    img: Image.Image,
+    tolerance: int = 38,
+    softness: int = 18,
+    protect_details: bool = True,
+    color: tuple[int, int, int] | None = None,
+) -> Image.Image:
+    """Remove solid, dominant, chroma, mildly noisy, or gradient-like backgrounds."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    rgb = arr[:, :, :3].astype(np.int16)
+    alpha = arr[:, :, 3]
+    bg = np.array(color or dominant_background_color(rgba), dtype=np.int16)
+    distance = np.linalg.norm(rgb - bg, axis=2)
+    candidate = distance <= tolerance
+    reachable = _reachable_from_edges(candidate)
+    if protect_details:
+        protected = detail_protection_mask(rgba, threshold=24, radius=5) & ~candidate
+        reachable = reachable & ~protected
+    else:
+        protected = np.zeros(reachable.shape, dtype=bool)
+    new_alpha = _fade_alpha(alpha, distance, reachable, tolerance, softness)
+    if protect_details:
+        new_alpha = restore_protected_alpha(new_alpha, alpha, protected & ~reachable, strength=0.8)
+    arr[:, :, 3] = new_alpha
+    return Image.fromarray(arr, "RGBA")
+
+
+def remove_background_opencv(img: Image.Image, protect_details: bool = True) -> Image.Image:
+    """Segment non-uniform backgrounds using GrabCut seeded by image borders."""
+    rgba = img.convert("RGBA")
+    rgb = np.array(rgba.convert("RGB"))
+    h, w, _ = rgb.shape
+    mask = np.full((h, w), cv2.GC_PR_FGD, dtype=np.uint8)
+    pad = max(6, min(h, w) // 30)
+    mask[:pad, :] = cv2.GC_BGD
+    mask[-pad:, :] = cv2.GC_BGD
+    mask[:, :pad] = cv2.GC_BGD
+    mask[:, -pad:] = cv2.GC_BGD
+    bgd = np.zeros((1, 65), np.float64)
+    fgd = np.zeros((1, 65), np.float64)
+    cv2.grabCut(rgb, mask, None, bgd, fgd, 3, cv2.GC_INIT_WITH_MASK)
+    foreground = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+    if protect_details:
+        foreground = np.maximum(foreground, detail_protection_mask(rgba).astype(np.uint8) * 255)
+    out = rgba.copy()
+    out.putalpha(Image.fromarray(foreground, "L"))
+    return out
+
+
+def _reachable_from_edges(mask: np.ndarray) -> np.ndarray:
+    work = mask.astype(np.uint8) * 255
+    flood = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+    h, w = mask.shape
+    for point in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
+        if work[point[1], point[0]]:
+            cv2.floodFill(work, flood, point, 128)
+    return work == 128
+
+
+def _fade_alpha(alpha: np.ndarray, distance: np.ndarray, remove_mask: np.ndarray, tolerance: int, softness: int) -> np.ndarray:
+    out = alpha.astype(np.float32).copy()
+    out[remove_mask] = 0
+    halo = (~remove_mask) & (distance < tolerance + softness)
+    fade = np.clip((distance - tolerance) / max(1, softness), 0, 1)
+    out[halo] *= fade[halo]
+    return np.clip(out, 0, 255).astype(np.uint8)

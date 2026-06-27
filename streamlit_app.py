@@ -22,6 +22,7 @@ from ui.sidebar import render_sidebar
 
 APP_VERSION = f"V{VERSION}"
 MODE_KEYS = {mode["key"]: name for name, mode in MODES.items()}
+MODE_KEYS["color_bg"] = "Fondo de color"
 
 st.set_page_config(page_title=f"{NAME} {APP_VERSION}", page_icon="MC", layout="wide")
 st.markdown(f"<style>{Path('assets/styles.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
@@ -42,12 +43,14 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         mode_key=str(mode["key"]),
         use_ai=options.use_ai,
         remove_black=options.remove_black,
+        remove_color=options.remove_color,
         clean_enabled=options.clean_enabled,
         trim=options.trim,
         alpha_cut=options.alpha_cut,
         despeckle_area=options.despeckle_area,
         edge_contract=options.edge_contract,
         black_threshold=options.black_threshold,
+        color_tolerance=options.color_tolerance,
         protect_details=options.protect_details,
         max_ai_side=options.max_ai_side,
         upscale=options.upscale,
@@ -93,12 +96,13 @@ if original is None:
 
 if detected and recommended_mode_name:
     st.success(f"Tipo detectado: {detected['type']} | Recomendacion: {recommended_mode_name}")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Resolucion", str(detected["resolution"]))
     c2.metric("Transparencia", f"{detected['transparency_percent']}%")
     c3.metric("Fondo", str(detected["background"]))
-    c4.metric("Negro", f"{detected['black_percent']}%")
-    c5.metric("Tiempo", f"{detected['estimated_seconds']}s")
+    c4.metric("Color", str(detected["dominant_color"]))
+    c5.metric("Uniformidad", f"{detected['background_uniformity']}%")
+    c6.metric("Tiempo", f"{detected['estimated_seconds']}s")
 
 render_input_summary(original, mode_name, mode)
 

@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 import cv2
 import numpy as np
 from PIL import Image
+from core.background_remove import background_uniformity, dominant_background_color
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class DetectionResult:
     shadow_score: float
     splash_score: float
     background: str
+    dominant_color: str
+    background_uniformity: float
     estimated_seconds: float
     resolution: str
 
@@ -39,12 +42,15 @@ def detect(img: Image.Image) -> dict[str, object]:
     alpha = arr[:, :, 3]
     gray = _gray(rgb)
     metrics = _metrics(rgb, alpha, gray)
+    dominant = dominant_background_color(img)
+    metrics["background_uniformity"] = background_uniformity(img, dominant)
     kind, mode, use_ai = _classify(metrics)
     return DetectionResult(
         type=kind,
         recommended_mode=mode,
         use_ai=use_ai,
         background=_background_label(metrics),
+        dominant_color=_hex_color(dominant),
         estimated_seconds=_estimate_seconds(img.width, img.height, use_ai),
         resolution=f"{img.width} x {img.height}px",
         **{key: round(value, 2) for key, value in metrics.items()},
@@ -121,6 +127,8 @@ def _classify(m: dict[str, float]) -> tuple[str, str, bool]:
         return "PNG transparente", "transparent_png", False
     if m["black_percent"] > 55 and m["text_score"] < 65:
         return "Fondo negro", "black_bg", False
+    if m["background_uniformity"] > 62 and m["edge_density"] > 2:
+        return "Fondo de color", "color_bg", False
     if m["black_percent"] > 32 and (m["shadow_score"] > 8 or m["splash_score"] > 18):
         return "Diseno oscuro", "dark_artwork", False
     if m["white_percent"] > 68 and m["edge_density"] > 3:
@@ -139,7 +147,13 @@ def _background_label(m: dict[str, float]) -> str:
         return "negro"
     if m["white_percent"] > 60:
         return "blanco"
-    return "mixto"
+    if m["background_uniformity"] > 62:
+        return "color dominante"
+    return "textura/degradado"
+
+
+def _hex_color(color: tuple[int, int, int]) -> str:
+    return "#{:02x}{:02x}{:02x}".format(*color)
 
 
 def _estimate_seconds(width: int, height: int, use_ai: bool) -> float:
