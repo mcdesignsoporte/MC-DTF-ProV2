@@ -10,7 +10,8 @@ from core.background import apply_ai_alpha_to_original
 from core.detector import detect
 from core.halftone import make_halftone
 from core.image_io import image_to_png_bytes, make_zip_bytes
-from core.preview import composite_preview
+from core.pipeline import PipelineSettings, process_artwork
+from core.preview import before_after_preview, composite_preview
 from core.export import build_export_package
 
 
@@ -91,6 +92,39 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertEqual("transparent_png", result["recommended_mode"])
         self.assertFalse(result["use_ai"])
+
+    def test_before_after_preview_combines_two_panels(self):
+        before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
+        after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
+
+        result = before_after_preview(before, after, "Black shirt", max_side=120)
+
+        self.assertGreater(result.width, before.width)
+        self.assertGreaterEqual(result.height, before.height)
+
+    def test_pipeline_preserves_dimensions_without_resize_options(self):
+        img = Image.new("RGBA", (28, 18), (255, 255, 255, 255))
+        settings = PipelineSettings(
+            mode_key="preserve_artwork",
+            use_ai=False,
+            remove_black=False,
+            clean_enabled=False,
+            trim=False,
+            alpha_cut=70,
+            despeckle_area=1,
+            edge_contract=0,
+            black_threshold=24,
+            protect_details=True,
+            max_ai_side=1200,
+            upscale=1,
+            dpi=300,
+            width_cm=0,
+            height_cm=0,
+        )
+
+        result = process_artwork(img, {"type": "dtf artwork", "use_ai": False}, settings)
+
+        self.assertEqual((28, 18), result["image"].size)
 
 
 if __name__ == "__main__":

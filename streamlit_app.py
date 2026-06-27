@@ -4,24 +4,18 @@ from pathlib import Path
 import streamlit as st
 
 from core.background import (
-    apply_ai_alpha_to_original,
     get_rembg_session,
-    has_transparency,
-    remove_background_ai,
-    resize_for_ai,
-    should_use_ai,
 )
-from core.black_remove import remove_black_background
-from core.clean import clean_alpha, trim_transparent
 from core.detector import detect
 from core.export import build_export_package
 from core.halftone import make_halftone
 from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_image
 from core.modes import MODES
-from core.preview import composite_preview
-from core.resize import fit_to_print_size, upscale_and_sharpen
+from core.pipeline import PipelineSettings, process_artwork
+from core.preview import alpha_difference_preview, before_after_preview, composite_preview
 from core.constants import SUPPORTED_FORMATS
 from core.version import AUTHOR, NAME, VERSION
+from ui.batch import render_batch_table
 from ui.downloads import render_downloads
 from ui.preview import render_input_summary, render_result_preview
 from ui.sidebar import render_sidebar
@@ -40,6 +34,27 @@ st.caption("Detector automatico, modos inteligentes, limpieza de fondo negro, pr
 @st.cache_resource(show_spinner="Cargando modelo IA de fondo...")
 def cached_session():
     return get_rembg_session()
+
+
+def current_settings(mode: dict[str, object], options) -> PipelineSettings:
+    """Convert UI options into reusable core pipeline settings."""
+    return PipelineSettings(
+        mode_key=str(mode["key"]),
+        use_ai=options.use_ai,
+        remove_black=options.remove_black,
+        clean_enabled=options.clean_enabled,
+        trim=options.trim,
+        alpha_cut=options.alpha_cut,
+        despeckle_area=options.despeckle_area,
+        edge_contract=options.edge_contract,
+        black_threshold=options.black_threshold,
+        protect_details=options.protect_details,
+        max_ai_side=options.max_ai_side,
+        upscale=options.upscale,
+        dpi=options.dpi,
+        width_cm=options.width_cm,
+        height_cm=options.height_cm,
+    )
 
 
 uploaded_files = st.file_uploader(
@@ -87,23 +102,8 @@ if detected and recommended_mode_name:
 render_input_summary(original, mode_name, mode)
 
 def process_image(original_img, detection: dict[str, object], filename: str = "image") -> dict[str, object]:
-    """Run the selected pipeline and return images plus export payloads."""
-    work = original_img.copy()
-    if options.use_ai and should_use_ai(detection, mode["key"]) and not has_transparency(work):
-        ai_img = resize_for_ai(work, max_side=options.max_ai_side)
-        ai_result = remove_background_ai(ai_img, session=cached_session())
-        work = apply_ai_alpha_to_original(work, ai_result)
-    if options.remove_black:
-        work = remove_black_background(work, threshold=options.black_threshold, softness=12, protect_details=options.protect_details)
-    if options.clean_enabled:
-        work = clean_alpha(work, alpha_cut=options.alpha_cut, despeckle_area=options.despeckle_area, edge_contract=options.edge_contract)
-    if options.trim:
-        work = trim_transparent(work, padding=20)
-    work = fit_to_print_size(work, width_cm=options.width_cm, height_cm=options.height_cm, dpi=options.dpi)
-    if options.upscale > 1:
-        work = upscale_and_sharpen(work, scale=options.upscale)
-    exports = build_export_package(work, dpi=options.dpi, prefix=filename, mode=str(mode["key"]))
-    return {"image": work, **exports}
+    """Run one image through the shared production pipeline."""
+    return process_artwork(original_img, detection, current_settings(mode, options), session_factory=cached_session, prefix=filename)
 
 
 if st.button("Process image", type="primary", use_container_width=True):
@@ -116,6 +116,7 @@ if st.button("Process image", type="primary", use_container_width=True):
         progress.progress(10)
         result_payload = process_image(original, detected or {}, "mc_dtf_pro_v4")
         work = result_payload["image"]
+        st.session_state["original_img"] = original.copy()
         st.session_state["result_img"] = work
         extra_files = {}
 
@@ -143,22 +144,55 @@ if st.button("Process image", type="primary", use_container_width=True):
 
 if len(uploaded_files or []) > 1 and st.button("Process batch", use_container_width=True):
     batch_files = {}
+    batch_rows = []
     progress = st.progress(0)
     for index, file in enumerate(uploaded_files or [], start=1):
-        img = load_uploaded_image(file)
-        payload = process_image(img, detect(img), file.name.rsplit(".", 1)[0])
-        batch_files[f"{file.name.rsplit('.', 1)[0]}.png"] = payload["png"]
-        batch_files[f"{file.name.rsplit('.', 1)[0]}.pdf"] = payload["pdf"]
+        started = time.time()
+        try:
+            img = load_uploaded_image(file)
+            file_detection = detect(img)
+            stem = file.name.rsplit(".", 1)[0]
+            payload = process_image(img, file_detection, stem)
+            batch_files[f"{stem}.png"] = payload["png"]
+            batch_files[f"{stem}.pdf"] = payload["pdf"]
+            batch_rows.append({
+                "file": file.name,
+                "status": "ok",
+                "detected": file_detection["type"],
+                "mode": mode_name,
+                "seconds": round(time.time() - started, 2),
+                "resolution": file_detection["resolution"],
+            })
+        except Exception as exc:
+            batch_rows.append({
+                "file": file.name,
+                "status": "error",
+                "detected": "-",
+                "mode": mode_name,
+                "seconds": round(time.time() - started, 2),
+                "resolution": str(exc),
+            })
         progress.progress(index / len(uploaded_files))
     from core.image_io import make_zip_bytes
 
-    st.download_button("Download batch ZIP", make_zip_bytes(batch_files), "mc_dtf_pro_v4_batch.zip", "application/zip", use_container_width=True)
+    st.session_state["batch_rows"] = batch_rows
+    render_batch_table(batch_rows)
+    if batch_files:
+        st.download_button("Download batch ZIP", make_zip_bytes(batch_files), "mc_dtf_pro_v4_batch.zip", "application/zip", use_container_width=True)
+
+if "batch_rows" in st.session_state:
+    render_batch_table(st.session_state["batch_rows"])
 
 if "result_img" in st.session_state:
     st.divider()
     st.subheader("Resultado")
     bg_mode = st.radio("Preview", ["Transparent", "Black shirt", "White shirt", "Sticker", "Mug", "Beer mug", "Hoodie"], horizontal=True)
     preview = composite_preview(st.session_state["result_img"], bg_mode)
+    qa_mode = st.radio("QA view", ["Final preview", "Before / After", "Alpha changes"], horizontal=True)
+    if qa_mode == "Before / After":
+        preview = before_after_preview(st.session_state["original_img"], st.session_state["result_img"], bg_mode)
+    elif qa_mode == "Alpha changes":
+        preview = alpha_difference_preview(st.session_state["original_img"], st.session_state["result_img"])
 
     col_a, col_b = st.columns([2, 1])
     with col_a:

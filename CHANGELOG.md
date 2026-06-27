@@ -14,3 +14,12 @@
 - Added multiple-image batch processing with ZIP download.
 - Removed dead modules and empty nonfunctional files.
 - Added verification tests for alpha behavior, black removal, export packaging, and transparent PNG detection.
+
+## V4.0.1
+
+- Added a shared `core/pipeline.py` processing path for single-image and batch jobs.
+- Added Before/After QA preview.
+- Added alpha-change inspection preview.
+- Improved product previews with studio-style surfaces, garment shadows, mug details, and sticker surfaces.
+- Added batch status table with file name, status, detected type, selected mode, processing time, and resolution/error.
+- Added tests for the shared pipeline and before/after preview generation.

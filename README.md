@@ -9,8 +9,9 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 - AI background removal only for photographs.
 - OpenCV black background removal with protection for letters, logos, splashes, smoke, thin contours, outlines, and shadows.
 - Commercial previews: Transparent, Black shirt, White shirt, Sticker, Mug, Beer mug, and Hoodie.
+- Before/After QA view and alpha-change inspection.
 - PNG, PDF, and ZIP export at 300 DPI with PNG metadata.
-- Multiple-image batch processing with a batch ZIP export.
+- Multiple-image batch processing with status table, timing, detection, and batch ZIP export.
 - Advanced Settings hidden by default.
 - Tests for alpha handling, black removal, export, and transparent PNG detection.
 
@@ -51,6 +52,7 @@ tests/
 - `core/black_remove.py`: removes pure background black without AI.
 - `core/detail_protect.py`: protects letters, logos, splashes, smoke, outlines, shadows, and thin contours.
 - `core/export.py`: exports PNG, PDF, and ZIP with 300 DPI metadata.
+- `core/pipeline.py`: shared single-image and batch processing pipeline.
 - `core/preview.py`: creates fast preview composites without changing export resolution.
 
 ## Verify
