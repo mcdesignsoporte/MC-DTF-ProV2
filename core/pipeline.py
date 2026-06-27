@@ -10,6 +10,9 @@ from core.black_remove import remove_black_background
 from core.clean import clean_alpha, trim_transparent
 from core.export import build_export_package
 from core.resize import fit_to_print_size, upscale_and_sharpen
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ def process_artwork(
     prefix: str = "mc_dtf_pro_v4",
 ) -> dict[str, object]:
     """Run the production image pipeline and preserve export resolution unless requested."""
+    logger.info("Processing %s with mode=%s", prefix, settings.mode_key)
     work = img.convert("RGBA")
     if settings.use_ai and should_use_ai(detection, settings.mode_key) and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)

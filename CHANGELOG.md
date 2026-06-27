@@ -23,3 +23,13 @@
 - Improved product previews with studio-style surfaces, garment shadows, mug details, and sticker surfaces.
 - Added batch status table with file name, status, detected type, selected mode, processing time, and resolution/error.
 - Added tests for the shared pipeline and before/after preview generation.
+
+## V4.0.2
+
+- Completed active `core/logger.py` and `core/presets.py` modules.
+- Rebuilt modes in Spanish with stable internal mode keys.
+- Expanded smart detection with text, logo, noise, splash, shadow, and background metrics.
+- Refactored alpha cleanup into reusable `threshold_alpha`, `despeckle`, and `contract_edge` functions.
+- Added validation and type hints to image loading/export helpers.
+- Added logging to the production processing pipeline.
+- Added tests for cleanup behavior and preset coverage.

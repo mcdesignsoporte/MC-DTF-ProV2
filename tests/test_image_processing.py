@@ -7,10 +7,12 @@ from PIL import Image
 
 from core.black_remove import remove_black_background
 from core.background import apply_ai_alpha_to_original
+from core.clean import clean_alpha, contract_edge, despeckle
 from core.detector import detect
 from core.halftone import make_halftone
 from core.image_io import image_to_png_bytes, make_zip_bytes
 from core.pipeline import PipelineSettings, process_artwork
+from core.presets import available_mode_keys, preset_for_mode
 from core.preview import before_after_preview, composite_preview
 from core.export import build_export_package
 
@@ -52,6 +54,7 @@ class ImageProcessingTests(unittest.TestCase):
         result = detect(img)
 
         self.assertEqual("black_bg", result["recommended_mode"])
+        self.assertEqual("negro", result["background"])
 
     def test_black_removal_keeps_bright_letter_details(self):
         img = Image.new("RGBA", (32, 32), (0, 0, 0, 255))
@@ -63,6 +66,18 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertEqual(0, result.getpixel((0, 0))[3])
         self.assertEqual(255, result.getpixel((16, 16))[3])
+
+    def test_clean_alpha_removes_small_trash(self):
+        img = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+        img.putpixel((1, 1), (255, 0, 0, 255))
+        for x in range(5, 9):
+            for y in range(5, 9):
+                img.putpixel((x, y), (255, 0, 0, 255))
+
+        result = clean_alpha(img, alpha_cut=70, despeckle_area=4)
+
+        self.assertEqual(0, result.getpixel((1, 1))[3])
+        self.assertEqual(255, result.getpixel((6, 6))[3])
 
     def test_zip_contains_generated_assets(self):
         img = Image.new("RGBA", (8, 8), (255, 0, 0, 255))
@@ -125,6 +140,12 @@ class ImageProcessingTests(unittest.TestCase):
         result = process_artwork(img, {"type": "dtf artwork", "use_ai": False}, settings)
 
         self.assertEqual((28, 18), result["image"].size)
+
+    def test_presets_expose_required_modes(self):
+        keys = available_mode_keys()
+
+        self.assertIn("black_bg", keys)
+        self.assertEqual("dtf_ready", preset_for_mode("dtf_ready")["key"])
 
 
 if __name__ == "__main__":

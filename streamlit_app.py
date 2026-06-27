@@ -28,7 +28,7 @@ st.markdown(f"<style>{Path('assets/styles.css').read_text(encoding='utf-8')}</st
 
 st.markdown(f'<div class="mc-tag">{AUTHOR}</div>', unsafe_allow_html=True)
 st.markdown(f'<h1 class="mc-title">{NAME} {APP_VERSION}</h1>', unsafe_allow_html=True)
-st.caption("Detector automatico, modos inteligentes, limpieza de fondo negro, proteccion de letras y exportacion PNG/PDF/ZIP.")
+st.caption("Software profesional DTF con deteccion automatica, modos inteligentes, previews comerciales y exportacion PNG/PDF/ZIP.")
 
 
 @st.cache_resource(show_spinner="Cargando modelo IA de fondo...")
@@ -92,12 +92,13 @@ if original is None:
     st.stop()
 
 if detected and recommended_mode_name:
-    st.success(f"Detected: {detected['type']} | Recommendation: {recommended_mode_name}")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Estimated time", f"{detected['estimated_seconds']}s")
-    c2.metric("Resolution", str(detected["resolution"]))
-    c3.metric("Black", f"{detected['black_percent']}%")
-    c4.metric("Edges", f"{detected['edge_density']}%")
+    st.success(f"Tipo detectado: {detected['type']} | Recomendacion: {recommended_mode_name}")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Resolucion", str(detected["resolution"]))
+    c2.metric("Transparencia", f"{detected['transparency_percent']}%")
+    c3.metric("Fondo", str(detected["background"]))
+    c4.metric("Negro", f"{detected['black_percent']}%")
+    c5.metric("Tiempo", f"{detected['estimated_seconds']}s")
 
 render_input_summary(original, mode_name, mode)
 
