@@ -1,7 +1,7 @@
-streamlit
-pillow
-numpy
-opencv-python-headless
-rembg
-onnxruntime
-scikit-image
+streamlit==1.41.1
+pillow==10.4.0
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+rembg==2.0.60
+onnxruntime==1.19.2
+scikit-image==0.24.0
