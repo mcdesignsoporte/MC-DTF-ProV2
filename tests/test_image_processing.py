@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from core.black_remove import remove_black_background
-from core.background_remove import dominant_background_color, remove_dominant_background
+from core.background_remove import cleanup_light_background_residue, dominant_background_color, light_residue_percent, remove_dominant_background
 from core.background import apply_ai_alpha_to_original
 from core.clean import clean_alpha, contract_edge, despeckle, protect_fine_details, safe_despeckle
 from core.detector import detect
@@ -358,6 +358,48 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual(255, result.getpixel((42, 34))[3])
         self.assertGreater(result.getpixel((42, 34))[0], 240)
 
+    def test_light_residue_cleanup_removes_exterior_connected_plate(self):
+        img = _residue_after_first_pass()
+        before = light_residue_percent(img, background_color=(240, 240, 240))
+
+        result = cleanup_light_background_residue(img, background_color=(240, 240, 240), tolerance=70)
+        after = light_residue_percent(result, background_color=(240, 240, 240))
+
+        self.assertGreater(before, 5)
+        self.assertLess(after, 1)
+        self.assertEqual(0, result.getpixel((8, 20))[3])
+
+    def test_light_residue_cleanup_preserves_enclosed_white_artwork(self):
+        img = _residue_after_first_pass()
+
+        result = cleanup_light_background_residue(img, background_color=(240, 240, 240), tolerance=70)
+
+        self.assertEqual(255, result.getpixel((45, 35))[3])
+        self.assertEqual((255, 255, 255), result.getpixel((45, 35))[:3])
+
+    def test_light_residue_cleanup_keeps_dark_outline_on_irregular_light_background(self):
+        img = _outlined_artwork_with_residue()
+
+        result = cleanup_light_background_residue(img, background_color=(240, 240, 240), tolerance=72)
+
+        self.assertEqual(0, result.getpixel((4, 8))[3])
+        self.assertEqual(255, result.getpixel((25, 20))[3])
+        self.assertEqual((20, 20, 20), result.getpixel((25, 20))[:3])
+
+    def test_automatic_mode_reduces_complex_light_background_residue(self):
+        img = _complex_light_background_artwork()
+        detection = detect(img)
+        first_pass = remove_dominant_background(img, tolerance=44, protect_details=True)
+        before = light_residue_percent(first_pass, background_color=(240, 240, 240), tolerance=70)
+
+        result = process_artwork(img, detection, _auto_settings())["image"]
+        after = light_residue_percent(result, background_color=(240, 240, 240), tolerance=70)
+        alpha = np.array(result.getchannel("A"))
+
+        self.assertGreater(np.mean(alpha < 250) * 100, 20)
+        self.assertLess(after, before)
+        self.assertEqual(255, result.getpixel((45, 35))[3])
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -501,6 +543,47 @@ def _light_background_artwork() -> Image.Image:
             img.putpixel((x, y), (255, 255, 255, 255))
     for x in range(22, 68):
         img.putpixel((x, 19), (25, 25, 25, 255))
+    return img
+
+
+def _residue_after_first_pass() -> Image.Image:
+    img = Image.new("RGBA", (90, 70), (240, 240, 240, 0))
+    for x in range(0, 28):
+        for y in range(6, 62):
+            img.putpixel((x, y), (240, 240, 240, 255))
+    for x in range(25, 68):
+        for y in range(18, 54):
+            img.putpixel((x, y), (210, 30, 80, 255))
+    for x in range(36, 55):
+        for y in range(30, 40):
+            img.putpixel((x, y), (255, 255, 255, 255))
+    return img
+
+
+def _outlined_artwork_with_residue() -> Image.Image:
+    img = Image.new("RGBA", (70, 50), (240, 240, 240, 0))
+    for x in range(0, 24):
+        for y in range(0, 50):
+            value = 236 + ((x + y) % 9)
+            img.putpixel((x, y), (value, value, value, 255))
+    for x in range(24, 50):
+        img.putpixel((x, 20), (20, 20, 20, 255))
+        img.putpixel((x, 36), (20, 20, 20, 255))
+    for y in range(20, 37):
+        img.putpixel((24, y), (20, 20, 20, 255))
+        img.putpixel((50, y), (20, 20, 20, 255))
+    for x in range(26, 49):
+        for y in range(22, 35):
+            img.putpixel((x, y), (230, 70, 150, 255))
+    return img
+
+
+def _complex_light_background_artwork() -> Image.Image:
+    img = _light_background_artwork()
+    for x in range(0, 30):
+        for y in range(8, 64):
+            value = 210 + ((x * 3 + y) % 9)
+            img.putpixel((x, y), (value, value, value, 255))
     return img
 
 

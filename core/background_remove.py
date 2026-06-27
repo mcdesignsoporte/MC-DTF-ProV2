@@ -56,6 +56,53 @@ def remove_dominant_background(
     return Image.fromarray(arr, "RGBA")
 
 
+def cleanup_light_background_residue(
+    img: Image.Image,
+    background_color: tuple[int, int, int] | None = None,
+    tolerance: int = 62,
+    alpha_threshold: int = 20,
+) -> Image.Image:
+    """Remove exterior light residue without touching enclosed white artwork."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    rgb = arr[:, :, :3].astype(np.int16)
+    alpha = arr[:, :, 3]
+    bg = np.array(background_color or dominant_background_color(rgba), dtype=np.int16)
+    gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2HSV)
+    distance = np.linalg.norm(rgb - bg, axis=2)
+    light_low_detail = (gray >= 210) & (hsv[:, :, 1] <= 42)
+    near_background = distance <= tolerance
+    candidate = (alpha > alpha_threshold) & light_low_detail & near_background
+    traversable = candidate | (alpha <= alpha_threshold)
+    exterior = _reachable_from_edges(traversable)
+    remove_mask = candidate & exterior
+    if not np.any(remove_mask):
+        return rgba
+    out = arr.copy()
+    out[remove_mask, 3] = 0
+    return Image.fromarray(out, "RGBA")
+
+
+def light_residue_percent(
+    img: Image.Image,
+    background_color: tuple[int, int, int] | None = None,
+    tolerance: int = 62,
+) -> float:
+    """Return the visible exterior light residue percentage for QA tests."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    rgb = arr[:, :, :3].astype(np.int16)
+    alpha = arr[:, :, 3]
+    bg = np.array(background_color or dominant_background_color(rgba), dtype=np.int16)
+    gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+    hsv = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2HSV)
+    distance = np.linalg.norm(rgb - bg, axis=2)
+    residue = (alpha > 20) & (gray >= 210) & (hsv[:, :, 1] <= 42) & (distance <= tolerance)
+    exterior = _reachable_from_edges(residue | (alpha <= 20))
+    return float((residue & exterior).mean() * 100)
+
+
 def remove_background_opencv(img: Image.Image, protect_details: bool = True) -> Image.Image:
     """Segment non-uniform backgrounds using GrabCut seeded by image borders."""
     rgba = img.convert("RGBA")
