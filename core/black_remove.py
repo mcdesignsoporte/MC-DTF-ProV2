@@ -1,48 +1,60 @@
+from __future__ import annotations
+
 import cv2
 import numpy as np
 from PIL import Image
 
-from core.detail_protect import detail_protection_mask, protect_dark_detail_alpha
+from core.detail_protect import detail_protection_mask, restore_protected_alpha
 
 
-def remove_black_background(
-    img: Image.Image,
-    threshold: int = 20,
-    softness: int = 12,
-    protect_details: bool = True,
-) -> Image.Image:
-    """Remove near-black background while preserving bright/colored design details.
-
-    This is a color-key method, not AI. It is best for DTF designs on black canvas.
-    - Pixels where RGB channels are all below threshold become transparent.
-    - A soft transition removes dark halos.
-    - If protect_details=True, black pixels near non-black edges are less aggressively removed.
-    """
-    rgba = img.convert("RGBA")
-    arr = np.array(rgba).astype(np.uint8)
-    rgb = arr[:, :, :3]
-    alpha = arr[:, :, 3].astype(np.float32)
-
+def _black_candidates(rgb: np.ndarray, threshold: int) -> tuple[np.ndarray, np.ndarray]:
     maxc = rgb.max(axis=2).astype(np.float32)
     minc = rgb.min(axis=2).astype(np.float32)
     chroma = maxc - minc
+    pure = maxc <= threshold
+    near = (maxc <= threshold + 18) & (chroma <= 16)
+    return pure, near
 
-    # Pure / near-pure black mask.
-    black_core = maxc <= threshold
 
-    # Soft edge: fade almost-black values instead of hard cutting everything.
-    fade_limit = threshold + max(1, softness)
+def _background_reachable(mask: np.ndarray) -> np.ndarray:
+    flood = np.zeros((mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+    work = mask.astype(np.uint8) * 255
+    h, w = mask.shape
+    for point in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
+        if work[point[1], point[0]]:
+            cv2.floodFill(work, flood, point, 128)
+    return work == 128
+
+
+def _soft_alpha(alpha: np.ndarray, rgb: np.ndarray, remove_mask: np.ndarray, threshold: int, softness: int) -> np.ndarray:
+    maxc = rgb.max(axis=2).astype(np.float32)
     fade = np.clip((maxc - threshold) / max(1, softness), 0, 1)
+    out = alpha.astype(np.float32).copy()
+    out[remove_mask] = 0
+    halo = (~remove_mask) & (maxc < threshold + softness)
+    out[halo] = out[halo] * fade[halo]
+    return np.clip(out, 0, 255).astype(np.uint8)
 
-    new_alpha = alpha.copy()
-    new_alpha[black_core] = 0
-    near_black = (maxc > threshold) & (maxc < fade_limit) & (chroma < 18)
-    new_alpha[near_black] = new_alpha[near_black] * fade[near_black]
+
+def remove_black_background(img: Image.Image, threshold: int = 24, softness: int = 14, protect_details: bool = True) -> Image.Image:
+    """Remove pure background black while preserving letters, outlines, shadows, and artwork detail."""
+    rgba = img.convert("RGBA")
+    arr = np.array(rgba)
+    rgb = arr[:, :, :3]
+    alpha = arr[:, :, 3]
+    pure_black, near_black = _black_candidates(rgb, threshold)
+    reachable = _background_reachable(near_black)
+    remove_mask = pure_black & reachable
 
     if protect_details:
-        # Preserve dark strokes that are part of text, logos, chrome edges, or splash details.
-        protected_mask = detail_protection_mask(rgba, threshold=threshold, radius=5)
-        new_alpha = protect_dark_detail_alpha(new_alpha, black_core, protected_mask, strength=0.45)
+        protected = detail_protection_mask(rgba, threshold=threshold, radius=5)
+        remove_mask = remove_mask & ~protected
+    else:
+        protected = np.zeros(remove_mask.shape, dtype=bool)
 
-    arr[:, :, 3] = np.clip(new_alpha, 0, 255).astype(np.uint8)
+    new_alpha = _soft_alpha(alpha, rgb, remove_mask, threshold, softness)
+    if protect_details:
+        new_alpha = restore_protected_alpha(new_alpha, alpha, protected & ~remove_mask, strength=0.75)
+
+    arr[:, :, 3] = new_alpha
     return Image.fromarray(arr, "RGBA")

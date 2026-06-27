@@ -11,6 +11,7 @@ from core.detector import detect
 from core.halftone import make_halftone
 from core.image_io import image_to_png_bytes, make_zip_bytes
 from core.preview import composite_preview
+from core.export import build_export_package
 
 
 class ImageProcessingTests(unittest.TestCase):
@@ -49,7 +50,7 @@ class ImageProcessingTests(unittest.TestCase):
 
         result = detect(img)
 
-        self.assertEqual("dark", result["recommended"])
+        self.assertEqual("black_bg", result["recommended_mode"])
 
     def test_black_removal_keeps_bright_letter_details(self):
         img = Image.new("RGBA", (32, 32), (0, 0, 0, 255))
@@ -70,6 +71,17 @@ class ImageProcessingTests(unittest.TestCase):
         with ZipFile(BytesIO(zip_payload)) as zf:
             self.assertEqual(["sample.png"], zf.namelist())
             self.assertGreater(len(zf.read("sample.png")), 0)
+
+    def test_export_preserves_dimensions_and_adds_assets(self):
+        img = Image.new("RGBA", (18, 12), (0, 0, 0, 0))
+
+        package = build_export_package(img, dpi=300, prefix="asset")
+
+        self.assertIn("png", package)
+        self.assertIn("pdf", package)
+        self.assertIn("zip", package)
+        reopened = Image.open(BytesIO(package["png"]))
+        self.assertEqual((18, 12), reopened.size)
 
 
 if __name__ == "__main__":

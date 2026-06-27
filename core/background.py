@@ -24,9 +24,18 @@ def get_rembg_session():
 
 
 def remove_background_ai(img: Image.Image, session=None) -> Image.Image:
+    """Run rembg for photographs only; callers must gate this with detection."""
     from rembg import remove
     img = img.convert("RGBA")
     return remove(img, session=session).convert("RGBA")
+
+
+def should_use_ai(detection: dict[str, object], mode_key: str) -> bool:
+    """Allow AI only for photograph mode and photograph detections."""
+    blocked_modes = {"transparent_png", "black_bg", "dark_artwork", "preserve_artwork", "dtf_ready"}
+    if mode_key in blocked_modes:
+        return False
+    return bool(detection.get("use_ai")) and detection.get("type") == "photograph"
 
 
 def apply_ai_alpha_to_original(original: Image.Image, ai_result: Image.Image) -> Image.Image:
