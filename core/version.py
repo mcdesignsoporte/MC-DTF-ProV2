@@ -1,0 +1,4 @@
+VERSION="4.0.0"
+BUILD="2026.06"
+AUTHOR="MC Creative Studio"
+NAME="MC DTF Pro"
