@@ -14,6 +14,7 @@ from core.halftone import make_halftone
 from core.image_io import image_to_png_bytes, make_zip_bytes
 from core.pipeline import PipelineSettings, process_artwork
 from core.presets import available_mode_keys, preset_for_mode
+from ui.detection import detection_value
 from core.preview import before_after_preview, composite_preview
 from core.export import build_export_package
 
@@ -162,6 +163,10 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertIn("black_bg", keys)
         self.assertEqual("dtf_ready", preset_for_mode("dtf_ready")["key"])
+
+    def test_detection_value_handles_legacy_payloads(self):
+        self.assertEqual("-", detection_value({}, "dominant_color"))
+        self.assertEqual(0, detection_value({"background_uniformity": None}, "background_uniformity", 0))
 
 
 if __name__ == "__main__":

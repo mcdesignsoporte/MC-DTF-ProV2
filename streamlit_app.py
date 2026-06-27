@@ -16,6 +16,7 @@ from core.preview import alpha_difference_preview, before_after_preview, composi
 from core.constants import SUPPORTED_FORMATS
 from core.version import AUTHOR, NAME, VERSION
 from ui.batch import render_batch_table
+from ui.detection import detection_value
 from ui.downloads import render_downloads
 from ui.preview import render_input_summary, render_result_preview
 from ui.sidebar import render_sidebar
@@ -95,14 +96,14 @@ if original is None:
     st.stop()
 
 if detected and recommended_mode_name:
-    st.success(f"Tipo detectado: {detected['type']} | Recomendacion: {recommended_mode_name}")
+    st.success(f"Tipo detectado: {detection_value(detected, 'type')} | Recomendacion: {recommended_mode_name}")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Resolucion", str(detected["resolution"]))
-    c2.metric("Transparencia", f"{detected['transparency_percent']}%")
-    c3.metric("Fondo", str(detected["background"]))
-    c4.metric("Color", str(detected["dominant_color"]))
-    c5.metric("Uniformidad", f"{detected['background_uniformity']}%")
-    c6.metric("Tiempo", f"{detected['estimated_seconds']}s")
+    c1.metric("Resolucion", str(detection_value(detected, "resolution")))
+    c2.metric("Transparencia", f"{detection_value(detected, 'transparency_percent', 0)}%")
+    c3.metric("Fondo", str(detection_value(detected, "background")))
+    c4.metric("Color", str(detection_value(detected, "dominant_color")))
+    c5.metric("Uniformidad", f"{detection_value(detected, 'background_uniformity', 0)}%")
+    c6.metric("Tiempo", f"{detection_value(detected, 'estimated_seconds', 0)}s")
 
 render_input_summary(original, mode_name, mode)
 
