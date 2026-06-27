@@ -18,7 +18,7 @@
 ## V4.0.1
 
 - Added a shared `core/pipeline.py` processing path for single-image and batch jobs.
-- Added Before/After QA preview.
+- Added visual Antes/Despues QA preview.
 - Added alpha-change inspection preview.
 - Improved product previews with studio-style surfaces, garment shadows, mug details, and sticker surfaces.
 - Added batch status table with file name, status, detected type, selected mode, processing time, and resolution/error.
@@ -53,3 +53,14 @@
 - Added black background removal levels: Suave, Normal, and Fuerte.
 - Updated batch processing so every image uses its detector-recommended mode.
 - Updated ZIP exports to include `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.
+
+## V4.2.0
+
+- Added a professional auto-fit result viewer for large images.
+- Kept exports at full resolution while using optimized thumbnails only for preview.
+- Replaced result review radios with tabs: Resultado final, Antes / Despues, Cambios de transparencia, Alpha, and Original.
+- Added preview backgrounds for Transparente, Playera negra, Playera blanca, Sudadera, Sticker, Tarro, Taza, and Calcomania.
+- Added technical print information next to the result: pixels, centimeters, DPI, PNG mode, transparency, PNG size, and DTF status.
+- Added DTF quality scoring with checks for background removal, clean edges, resolution, alpha cleanliness, and print size.
+- Added alpha histogram metrics for transparent, solid, and semi-transparent pixels.
+- Added tests for preview thumbnail fitting, fast checkerboard generation, alpha preview, alpha histogram, and quality scoring.

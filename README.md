@@ -12,8 +12,12 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 - Automatic recommendation for the safest processing mode.
 - AI background removal only for photographs.
 - OpenCV black background removal with protection for letters, logos, splashes, smoke, thin contours, outlines, and shadows.
-- Vistas previas comerciales: Transparente, Playera negra, Playera blanca, Sticker, Taza, Tarro y Sudadera.
-- Vista Antes/Despues e inspeccion de cambios de transparencia.
+- Visor profesional con auto zoom, imagen centrada y miniaturas optimizadas para archivos grandes.
+- Fondos de vista comercial: Transparente, Playera negra, Playera blanca, Sudadera, Sticker, Tarro, Taza y Calcomania.
+- Tabs de revision: Resultado final, Antes/Despues, Cambios de transparencia, Alpha y Original.
+- Informacion tecnica de impresion: pixeles, centimetros, DPI, modo PNG, transparencia, peso y estado DTF.
+- Calidad DTF con checks de fondo, bordes, resolucion, alfa limpio y tamano de impresion.
+- Histograma alfa con porcentajes transparente, solido y semitransparente.
 - PNG, PDF, and ZIP export at 300 DPI with `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.
 - Multiple-image batch processing with detector-selected mode per image.
 - Advanced Settings hidden by default.
@@ -60,7 +64,8 @@ tests/
 - `core/logger.py`: centralized application logging.
 - `core/pipeline.py`: shared single-image and batch processing pipeline.
 - `core/presets.py`: exposes stable presets for future integrations.
-- `core/preview.py`: creates fast preview composites without changing export resolution.
+- `core/preview.py`: creates fast auto-fit preview composites without changing export resolution.
+- `core/quality.py`: evaluates DTF readiness and alpha-channel quality.
 
 ## Verify
 

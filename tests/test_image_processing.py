@@ -16,7 +16,8 @@ from core.image_io import image_to_png_bytes, make_zip_bytes
 from core.pipeline import PipelineSettings, process_artwork
 from core.presets import available_mode_keys, preset_for_mode
 from ui.detection import detection_value
-from core.preview import before_after_preview, composite_preview
+from core.preview import alpha_preview, before_after_preview, checkerboard, composite_preview, preview_thumbnail
+from core.quality import alpha_histogram, evaluate_dtf_quality
 from core.export import build_export_package
 
 
@@ -41,12 +42,33 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual((255, 0, 0), result.getpixel((200, 100))[:3])
         self.assertEqual(128, result.getpixel((200, 100))[3])
 
-    def test_preview_is_capped_for_large_images(self):
-        img = Image.new("RGBA", (4000, 2000), (0, 0, 0, 0))
+    def test_preview_uses_viewport_for_large_images(self):
+        img = Image.new("RGBA", (3543, 4724), (0, 0, 0, 0))
 
         preview = composite_preview(img, "Transparente", max_side=1000)
 
-        self.assertEqual((1000, 500), preview.size)
+        self.assertEqual((1080, 760), preview.size)
+
+    def test_preview_thumbnail_fits_viewport(self):
+        img = Image.new("RGBA", (3543, 4724), (255, 0, 0, 255))
+
+        thumb = preview_thumbnail(img, (800, 600), padding=30)
+
+        self.assertLessEqual(thumb.width, 740)
+        self.assertLessEqual(thumb.height, 540)
+
+    def test_checkerboard_is_fast_rgba_canvas(self):
+        board = checkerboard((320, 180), tile=16)
+
+        self.assertEqual((320, 180), board.size)
+        self.assertEqual("RGBA", board.mode)
+
+    def test_alpha_preview_uses_fixed_viewport(self):
+        img = Image.new("RGBA", (1200, 900), (255, 0, 0, 128))
+
+        preview = alpha_preview(img)
+
+        self.assertEqual((1080, 760), preview.size)
 
     def test_detector_recommends_dark_design_for_black_background(self):
         img = Image.new("RGBA", (100, 100), (0, 0, 0, 255))
@@ -129,10 +151,33 @@ class ImageProcessingTests(unittest.TestCase):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
 
-        result = before_after_preview(before, after, "Black shirt", max_side=120)
+        result = before_after_preview(before, after, "Playera negra", max_side=120)
 
         self.assertGreater(result.width, before.width)
         self.assertGreaterEqual(result.height, before.height)
+
+    def test_alpha_histogram_reports_distribution(self):
+        img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+        for x in range(5):
+            for y in range(10):
+                img.putpixel((x, y), (255, 0, 0, 0))
+        for y in range(10):
+            img.putpixel((9, y), (255, 0, 0, 120))
+
+        stats = alpha_histogram(img)
+
+        self.assertEqual(50.0, stats.transparent_percent)
+        self.assertEqual(40.0, stats.solid_percent)
+        self.assertEqual(10.0, stats.semitransparent_percent)
+
+    def test_quality_score_has_dtf_checks(self):
+        img = Image.new("RGBA", (1200, 1200), (255, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (900, 900), (255, 0, 0, 255)), (150, 150))
+
+        report = evaluate_dtf_quality(img, dpi=300)
+
+        self.assertGreaterEqual(report.score, 60)
+        self.assertIn("Sin fondo", report.checks)
 
     def test_pipeline_preserves_dimensions_without_resize_options(self):
         img = Image.new("RGBA", (28, 18), (255, 255, 255, 255))
@@ -172,7 +217,7 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual(0, detection_value({"background_uniformity": None}, "background_uniformity", 0))
 
     def test_export_zip_contains_required_names_and_metadata(self):
-        img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+        img = Image.new("RGBA", (3543, 4724), (255, 0, 0, 255))
         package = build_export_package(img, dpi=300, mode="dtf_ready", original=img, processing_seconds=1.2)
 
         with ZipFile(BytesIO(package["zip"])) as zf:
@@ -180,6 +225,8 @@ class ImageProcessingTests(unittest.TestCase):
             self.assertTrue({"original.png", "procesado.png", "procesado.pdf", "metadata.json"}.issubset(names))
             metadata = json.loads(zf.read("metadata.json"))
             self.assertEqual("dtf_ready", metadata["modo"])
+            processed = Image.open(BytesIO(zf.read("procesado.png")))
+            self.assertEqual((3543, 4724), processed.size)
 
 
 if __name__ == "__main__":

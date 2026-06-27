@@ -3,17 +3,28 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw
 
+VIEWPORT = (1080, 760)
+
+
+def preview_thumbnail(img: Image.Image, viewport: tuple[int, int] = VIEWPORT, padding: int = 40) -> Image.Image:
+    """Create an auto-zoomed thumbnail that fits the visible preview area."""
+    rgba = img.convert("RGBA")
+    max_w = max(120, viewport[0] - padding * 2)
+    max_h = max(120, viewport[1] - padding * 2)
+    preview = rgba.copy()
+    preview.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+    return preview
+
 
 def _fit_preview(img: Image.Image, max_side: int) -> Image.Image:
     rgba = img.convert("RGBA")
     if max_side <= 0 or max(rgba.size) <= max_side:
         return rgba
-    preview = rgba.copy()
-    preview.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-    return preview
+    return preview_thumbnail(rgba, (max_side, max_side), padding=0)
 
 
-def _checkerboard(size: tuple[int, int], tile: int = 32) -> Image.Image:
+def checkerboard(size: tuple[int, int], tile: int = 28) -> Image.Image:
+    """Generate a fast NumPy checkerboard for the viewport."""
     width, height = size
     yy, xx = np.indices((height, width))
     mask = ((xx // tile) + (yy // tile)) % 2 == 0
@@ -39,11 +50,12 @@ def _object_background(size: tuple[int, int], label: str) -> Image.Image:
     bg = _studio_background(size)
     draw = ImageDraw.Draw(bg)
     w, h = size
-    if "mug" in label.lower():
+    lower = label.lower()
+    if "mug" in lower or "taza" in lower or "tarro" in lower:
         draw.ellipse((w * 0.24, h * 0.78, w * 0.78, h * 0.9), fill=(0, 0, 0, 32))
         draw.rounded_rectangle((w * 0.25, h * 0.2, w * 0.7, h * 0.82), radius=30, fill=(255, 255, 255, 255), outline=(180, 180, 180, 255), width=3)
         draw.ellipse((w * 0.64, h * 0.34, w * 0.86, h * 0.62), outline=(180, 180, 180, 255), width=8)
-        if "beer" in label.lower() or "tarro" in label.lower():
+        if "beer" in lower or "tarro" in lower:
             draw.rectangle((w * 0.29, h * 0.22, w * 0.66, h * 0.36), fill=(231, 177, 67, 220))
     else:
         draw.ellipse((w * 0.2, h * 0.78, w * 0.8, h * 0.9), fill=(0, 0, 0, 25))
@@ -63,7 +75,7 @@ def _studio_background(size: tuple[int, int]) -> Image.Image:
 def _background(size: tuple[int, int], mode: str) -> Image.Image:
     lower = mode.lower()
     if "transparent" in lower or "transparente" in lower:
-        return _checkerboard(size)
+        return checkerboard(size)
     if "black shirt" in lower or "playera negra" in lower:
         return _garment_background(size, (12, 12, 12), "Playera negra")
     if "white shirt" in lower or "playera blanca" in lower:
@@ -72,17 +84,29 @@ def _background(size: tuple[int, int], mode: str) -> Image.Image:
         return _garment_background(size, (38, 38, 42), "Sudadera")
     if "mug" in lower or "taza" in lower or "tarro" in lower:
         return _object_background(size, mode)
-    if "sticker" in lower:
-        return _object_background(size, "Sticker")
+    if "sticker" in lower or "calcomania" in lower or "calcomanía" in lower:
+        return _object_background(size, "Calcomania")
     return Image.new("RGBA", size, (130, 130, 130, 255))
 
 
 def composite_preview(img: Image.Image, mode: str = "Transparente", max_side: int = 1400) -> Image.Image:
     """Create fast commercial previews without changing export resolution."""
-    rgba = _fit_preview(img, max_side)
-    bg = _background(rgba.size, mode)
-    bg.alpha_composite(rgba)
-    return bg
+    rgba = preview_thumbnail(img, (max_side, min(max_side, 900)))
+    canvas = _background(VIEWPORT, mode)
+    x = (canvas.width - rgba.width) // 2
+    y = (canvas.height - rgba.height) // 2
+    canvas.alpha_composite(rgba, (x, y))
+    return canvas
+
+
+def alpha_preview(img: Image.Image, max_side: int = 1400) -> Image.Image:
+    """Render the alpha channel as a fitted grayscale preview."""
+    thumb = preview_thumbnail(img, (max_side, min(max_side, 900)))
+    alpha = thumb.getchannel("A")
+    alpha_rgba = Image.merge("RGBA", (alpha, alpha, alpha, Image.new("L", alpha.size, 255)))
+    canvas = Image.new("RGBA", VIEWPORT, (24, 24, 24, 255))
+    canvas.alpha_composite(alpha_rgba, ((canvas.width - alpha.width) // 2, (canvas.height - alpha.height) // 2))
+    return canvas
 
 
 def before_after_preview(before: Image.Image, after: Image.Image, mode: str = "Transparente", max_side: int = 1200) -> Image.Image:
@@ -98,15 +122,17 @@ def before_after_preview(before: Image.Image, after: Image.Image, mode: str = "T
 
 def alpha_difference_preview(before: Image.Image, after: Image.Image, max_side: int = 1200) -> Image.Image:
     """Show changed alpha as a quick QA layer."""
-    before_alpha = _fit_preview(before, max_side).getchannel("A")
-    after_alpha = _fit_preview(after, max_side).getchannel("A")
+    before_alpha = preview_thumbnail(before, VIEWPORT, padding=40).getchannel("A")
+    after_alpha = preview_thumbnail(after, VIEWPORT, padding=40).getchannel("A")
     if before_alpha.size != after_alpha.size:
         after_alpha = after_alpha.resize(before_alpha.size, Image.Resampling.LANCZOS)
     diff = ImageChops.difference(before_alpha, after_alpha)
     heat = Image.new("RGBA", before_alpha.size, (255, 210, 0, 0))
     heat.putalpha(diff)
     base = composite_preview(before, "Playera negra", max_side=max_side)
-    base.alpha_composite(heat)
+    x = (base.width - heat.width) // 2
+    y = (base.height - heat.height) // 2
+    base.alpha_composite(heat, (x, y))
     return base
 
 

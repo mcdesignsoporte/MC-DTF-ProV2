@@ -50,7 +50,7 @@ Detection now also includes:
 - `core/presets.py`
 - `core/background_remove.py`
 - Batch processing from the main uploader.
-- Preview modes for product surfaces.
+- Modos de vista para superficies comerciales.
 
 ### V4.1.0
 
@@ -59,6 +59,14 @@ Detection now also includes:
 - Detection payload includes:
   - `dominant_color`
   - `background_uniformity`
+
+### V4.2.0
+
+- The result viewer now uses fitted preview thumbnails for large images.
+- Exported PNG, PDF, and ZIP files still preserve the processed image resolution.
+- Los modos de vista se movieron a tabs profesionales.
+- DTF quality data is available through `core.quality.evaluate_dtf_quality`.
+- Alpha distribution is available through `core.quality.alpha_histogram`.
 
 ### Deployment
 

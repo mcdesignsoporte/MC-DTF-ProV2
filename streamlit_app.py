@@ -13,13 +13,13 @@ from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_
 from core.modes import MODES
 from core.pipeline import PipelineSettings, process_artwork
 from core.presets import preset_for_mode
-from core.preview import alpha_difference_preview, before_after_preview, composite_preview
+from core.preview import composite_preview
 from core.constants import SUPPORTED_FORMATS
 from core.version import AUTHOR, NAME, VERSION
 from ui.batch import render_batch_table
 from ui.detection import detection_value
 from ui.downloads import render_downloads
-from ui.preview import render_input_summary, render_result_preview
+from ui.preview import render_input_summary, render_result_workspace
 from ui.sidebar import render_sidebar
 
 APP_VERSION = f"V{VERSION}"
@@ -203,17 +203,14 @@ if "batch_rows" in st.session_state:
 if "result_img" in st.session_state:
     st.divider()
     st.subheader("Resultado")
-    bg_mode = st.radio("Vista previa", ["Transparente", "Playera negra", "Playera blanca", "Sticker", "Taza", "Tarro", "Sudadera"], horizontal=True)
-    preview = composite_preview(st.session_state["result_img"], bg_mode)
-    qa_mode = st.radio("Revision", ["Resultado final", "Antes / Despues", "Cambios de transparencia"], horizontal=True)
-    if qa_mode == "Antes / Despues":
-        preview = before_after_preview(st.session_state["original_img"], st.session_state["result_img"], bg_mode)
-    elif qa_mode == "Cambios de transparencia":
-        preview = alpha_difference_preview(st.session_state["original_img"], st.session_state["result_img"])
-
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        render_result_preview(preview)
+        render_result_workspace(
+            st.session_state["original_img"],
+            st.session_state["result_img"],
+            options.dpi,
+            st.session_state["result_png"],
+        )
     with col_b:
         render_downloads(
             st.session_state["result_img"],
@@ -224,6 +221,6 @@ if "result_img" in st.session_state:
 
     if "halftone_img" in st.session_state:
         st.subheader("Semitono")
-        st.image(composite_preview(st.session_state["halftone_img"], bg_mode), use_container_width=True)
+        st.image(composite_preview(st.session_state["halftone_img"], "Transparente"), use_container_width=True)
         st.download_button("Descargar PNG semitono", st.session_state["halftone_png"], "mc_dtf_pro_v4_semitono.png", "image/png")
         st.download_button("Descargar PDF semitono", st.session_state["halftone_pdf"], "mc_dtf_pro_v4_semitono.pdf", "application/pdf")
