@@ -48,6 +48,9 @@ def render_result_workspace(
     cutline_mask: object | None = None,
     small_elements_mask: object | None = None,
     small_elements_report: dict[str, object] | None = None,
+    logo_report: dict[str, object] | None = None,
+    logo_palette: list[dict[str, object]] | None = None,
+    logo_layers: list[dict[str, object]] | None = None,
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
@@ -61,6 +64,8 @@ def render_result_workspace(
         "Sangrado",
         "Borde de corte",
         "Elementos pequenos",
+        "Paleta detectada",
+        "Capas por color",
         "Arte protegido",
         "Riesgo de perdida",
         "Original",
@@ -81,10 +86,14 @@ def render_result_workspace(
     with tabs[6]:
         st.image(_yellow_mask_preview(original, small_elements_mask), use_container_width=True)
     with tabs[7]:
-        st.image(_green_mask_preview(original, artwork_mask if artwork_mask is not None else white_mask), use_container_width=True)
+        render_palette_preview(logo_palette)
     with tabs[8]:
-        st.image(_risk_preview(original, doubtful_mask, restored_mask), use_container_width=True)
+        render_logo_layers(logo_layers)
     with tabs[9]:
+        st.image(_green_mask_preview(original, artwork_mask if artwork_mask is not None else white_mask), use_container_width=True)
+    with tabs[10]:
+        st.image(_risk_preview(original, doubtful_mask, restored_mask), use_container_width=True)
+    with tabs[11]:
         st.image(composite_preview(original, background), use_container_width=True)
 
     left, right = st.columns([1, 1])
@@ -94,6 +103,7 @@ def render_result_workspace(
         render_fine_detail_stats(fine_stats)
         render_non_destructive_stats(non_destructive_stats)
         render_dtf_prepress_stats(alpha_quality, dtf_prepress, small_elements_report)
+        render_logo_stats(logo_report, logo_palette)
         render_quality_report(production_report)
     with right:
         render_quality(report)
@@ -254,3 +264,38 @@ def render_quality_report(report: dict[str, object]) -> None:
     st.metric("Score DTF", f"{report.get('dtf_ready_score', report.get('score', 0))}%")
     for warning in report.get("warnings", []):
         st.warning(str(warning))
+
+
+def render_palette_preview(palette: list[dict[str, object]] | None) -> None:
+    """Render detected logo palette."""
+    st.subheader("Paleta detectada")
+    if not palette:
+        st.info("Sin paleta detectada.")
+        return
+    dominant = palette[0]
+    st.metric("Color dominante", str(dominant.get("hex", "-")))
+    for color in palette:
+        st.color_picker(str(color.get("hex")), str(color.get("hex")), disabled=True)
+        st.caption(f"{color.get('percent', 0)}%")
+
+
+def render_logo_layers(layers: list[dict[str, object]] | None) -> None:
+    """Render separated logo color layers."""
+    st.subheader("Capas por color")
+    if not layers:
+        st.info("Sin capas separadas.")
+        return
+    for index, layer in enumerate(layers[:8], start=1):
+        st.caption(f"Capa {index} | {layer.get('hex')}")
+        st.image(composite_preview(layer["image"], "Transparente"), use_container_width=True)
+
+
+def render_logo_stats(report: dict[str, object] | None, palette: list[dict[str, object]] | None) -> None:
+    """Render logo tool metrics."""
+    if not report and not palette:
+        return
+    st.subheader("Herramientas para logos")
+    st.metric("Colores detectados", str((report or {}).get("colors_detected", len(palette or []))))
+    st.metric("Capas por color", str((report or {}).get("layers", 0)))
+    if report and report.get("photo_warning"):
+        st.warning("La separacion por colores no es recomendada para fotografias.")

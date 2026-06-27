@@ -21,6 +21,7 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 - Centro Profesional con capacidades, modulos activos, feature flags y roadmap.
 - Arquitectura modular preparada para DTF, sublimacion, DTF UV, mockups, lote, vectorizacion, negocio y automatizacion.
 - Preparacion DTF profesional con analisis alfa, correccion segura de halos, expansion de borde, sangrado, cutline y advertencias de detalles pequenos.
+- Herramientas para logos: deteccion de colores, reduccion de paleta, blanco/negro a transparencia y separacion por capas de color.
 - PNG, PDF, and ZIP export at 300 DPI with `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.
 - Multiple-image batch processing with detector-selected mode per image.
 - Advanced Settings hidden by default.
@@ -79,6 +80,7 @@ docs/
 - `core/non_destructive.py`: stable API for the non-destructive engine.
 - `core/quality_report.py`: production QA report.
 - `core/dtf_prepress.py`: DTF prepress engine for halos, alpha quality, bleed, cutline, and small print details.
+- `core/logo_tools.py`: logo color tools and color-layer exports.
 
 ## Verify
 

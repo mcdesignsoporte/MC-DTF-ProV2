@@ -38,6 +38,15 @@ class ProcessingOptions:
     bleed_px: int
     create_cutline: bool
     min_printable_mm: float
+    logo_detect_colors: bool
+    logo_reduce_colors: bool
+    logo_black_to_transparent: bool
+    logo_white_to_transparent: bool
+    logo_unify_colors: bool
+    logo_separate_colors: bool
+    logo_export_layers: bool
+    logo_max_colors: int
+    logo_color_tolerance: int
     max_ai_side: int
     upscale: int
     dpi: int
@@ -221,6 +230,17 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         create_cutline = st.checkbox("Crear borde de corte", value=False)
         min_printable_mm = st.selectbox("Tamano minimo imprimible", [0.5, 1.0, 1.5, 2.0], index=1, format_func=lambda value: f"{value} mm")
 
+        st.subheader("Herramientas para logos")
+        logo_detect_colors = st.checkbox("Detectar colores", value=True)
+        logo_reduce_colors = st.checkbox("Reducir colores", value=False)
+        logo_black_to_transparent = st.checkbox("Negro a transparente", value=False)
+        logo_white_to_transparent = st.checkbox("Blanco a transparente", value=False)
+        logo_unify_colors = st.checkbox("Unificar colores similares", value=False)
+        logo_separate_colors = st.checkbox("Separar por colores", value=False)
+        logo_export_layers = st.checkbox("Exportar capas de color", value=False)
+        logo_max_colors = st.selectbox("Maximo de colores", [2, 4, 6, 8, 12], index=3)
+        logo_color_tolerance = st.slider("Tolerancia logos", 4, 80, 24)
+
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
@@ -243,6 +263,15 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "bleed_px": bleed_px,
         "create_cutline": create_cutline,
         "min_printable_mm": min_printable_mm,
+        "logo_detect_colors": logo_detect_colors,
+        "logo_reduce_colors": logo_reduce_colors,
+        "logo_black_to_transparent": logo_black_to_transparent,
+        "logo_white_to_transparent": logo_white_to_transparent,
+        "logo_unify_colors": logo_unify_colors,
+        "logo_separate_colors": logo_separate_colors,
+        "logo_export_layers": logo_export_layers,
+        "logo_max_colors": logo_max_colors,
+        "logo_color_tolerance": logo_color_tolerance,
     }
 
 
@@ -310,6 +339,15 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         bleed_px=int(controls["bleed_px"]),
         create_cutline=bool(controls["create_cutline"]),
         min_printable_mm=float(controls["min_printable_mm"]),
+        logo_detect_colors=bool(controls["logo_detect_colors"]),
+        logo_reduce_colors=bool(controls["logo_reduce_colors"]),
+        logo_black_to_transparent=bool(controls["logo_black_to_transparent"]),
+        logo_white_to_transparent=bool(controls["logo_white_to_transparent"]),
+        logo_unify_colors=bool(controls["logo_unify_colors"]),
+        logo_separate_colors=bool(controls["logo_separate_colors"]),
+        logo_export_layers=bool(controls["logo_export_layers"]),
+        logo_max_colors=int(controls["logo_max_colors"]),
+        logo_color_tolerance=int(controls["logo_color_tolerance"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),

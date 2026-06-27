@@ -13,6 +13,16 @@ from core.background_remove import remove_background_opencv, remove_dominant_bac
 from core.clean import clean_alpha_with_stats, trim_transparent
 from core.dtf_prepress import DTFPrepressSettings, mask_png_bytes, prepare_dtf
 from core.export import build_export_package
+from core.logo_tools import (
+    black_to_transparent,
+    detect_dominant_colors,
+    export_color_layers,
+    is_photo_like,
+    reduce_colors,
+    separate_colors,
+    unify_similar_colors,
+    white_to_transparent,
+)
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
@@ -50,6 +60,15 @@ class PipelineSettings:
     bleed_px: int
     create_cutline: bool
     min_printable_mm: float
+    logo_detect_colors: bool
+    logo_reduce_colors: bool
+    logo_black_to_transparent: bool
+    logo_white_to_transparent: bool
+    logo_unify_colors: bool
+    logo_separate_colors: bool
+    logo_export_layers: bool
+    logo_max_colors: int
+    logo_color_tolerance: int
     max_ai_side: int
     upscale: int
     dpi: int
@@ -74,6 +93,8 @@ def process_artwork(
     fine_mask = None
     nd_result = None
     dtf_result = None
+    logo_report: dict[str, object] | None = None
+    logo_layers: dict[str, object] | None = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
@@ -120,6 +141,7 @@ def process_artwork(
     work = fit_to_print_size(work, width_cm=settings.width_cm, height_cm=settings.height_cm, dpi=settings.dpi)
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
+    work, logo_report, logo_layers = _apply_logo_tools(work, settings, detection)
     if settings.enable_dtf_prepress:
         dtf_result = prepare_dtf(work, DTFPrepressSettings(
             enable_dtf_prepress=settings.enable_dtf_prepress,
@@ -135,7 +157,9 @@ def process_artwork(
         work = dtf_result.image
     metadata_extra = _metadata_extra(nd_result)
     metadata_extra.update(_dtf_metadata_extra(dtf_result))
+    metadata_extra.update(_logo_metadata_extra(logo_report))
     extra_files = _dtf_extra_files(dtf_result)
+    extra_files.update(_logo_extra_files(logo_layers, logo_report))
     exports = build_export_package(
         work,
         dpi=settings.dpi,
@@ -168,6 +192,9 @@ def process_artwork(
         "small_elements_report": dtf_result.small_elements_report if dtf_result else None,
         "metadata_extra": metadata_extra,
         "dtf_extra_files": extra_files,
+        "logo_report": logo_report,
+        "logo_palette": logo_report.get("palette", []) if logo_report else None,
+        "logo_layers": logo_layers.get("layers", []) if logo_layers else None,
         **exports,
     }
 
@@ -235,4 +262,59 @@ def _dtf_extra_files(dtf_result) -> dict[str, bytes]:
     }
     if bool(dtf_result.metadata.get("cutline_ready", False)):
         files["cutline_mask.png"] = mask_png_bytes(dtf_result.cutline_mask)
+    return files
+
+
+def _apply_logo_tools(img: Image.Image, settings: PipelineSettings, detection: dict[str, object]) -> tuple[Image.Image, dict[str, object] | None, dict[str, object] | None]:
+    enabled = any([
+        settings.logo_detect_colors,
+        settings.logo_reduce_colors,
+        settings.logo_black_to_transparent,
+        settings.logo_white_to_transparent,
+        settings.logo_unify_colors,
+        settings.logo_separate_colors,
+        settings.logo_export_layers,
+    ])
+    if not enabled:
+        return img, None, None
+    work = img.convert("RGBA")
+    warning = bool(is_photo_like(work) or str(detection.get("recommended_mode", "")) == "photograph")
+    if settings.logo_black_to_transparent:
+        work = black_to_transparent(work, tolerance=settings.logo_color_tolerance)
+    if settings.logo_white_to_transparent:
+        work = white_to_transparent(work, tolerance=settings.logo_color_tolerance)
+    if settings.logo_unify_colors:
+        work = unify_similar_colors(work, tolerance=settings.logo_color_tolerance)
+    if settings.logo_reduce_colors:
+        work = reduce_colors(work, max_colors=settings.logo_max_colors)
+    palette = detect_dominant_colors(work, max_colors=settings.logo_max_colors) if settings.logo_detect_colors or settings.logo_separate_colors or settings.logo_export_layers else []
+    layers = export_color_layers(work, max_colors=settings.logo_max_colors) if settings.logo_separate_colors or settings.logo_export_layers else None
+    report = {
+        "palette": palette,
+        "colors_detected": len(palette),
+        "photo_warning": warning,
+        "layers": int((layers or {}).get("report", {}).get("layers", 0)),
+    }
+    return work, report, layers
+
+
+def _logo_metadata_extra(report: dict[str, object] | None) -> dict[str, str]:
+    if not report:
+        return {}
+    return {
+        "logo_colors_detected": str(report.get("colors_detected", 0)),
+        "logo_layers": str(report.get("layers", 0)),
+        "logo_photo_warning": str(report.get("photo_warning", False)),
+    }
+
+
+def _logo_extra_files(layers: dict[str, object] | None, report: dict[str, object] | None) -> dict[str, bytes]:
+    if not report:
+        return {}
+    files: dict[str, bytes] = {
+        "palette.json": json.dumps(report.get("palette", []), indent=2, ensure_ascii=False).encode("utf-8"),
+        "logo_report.json": json.dumps({key: value for key, value in report.items() if key != "palette"}, indent=2, ensure_ascii=False).encode("utf-8"),
+    }
+    if layers:
+        files.update(layers.get("files", {}))
     return files

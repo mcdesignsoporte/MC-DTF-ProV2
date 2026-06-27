@@ -117,3 +117,12 @@
 - Added DTF quality report metrics for halo risk, semi-transparency, small elements, cutline readiness, and DTF ready score.
 - Added ZIP artifacts `processed.png`, `processed.pdf`, `alpha_quality.json`, `small_elements_report.json`, and optional `cutline_mask.png`.
 - Added DTF prepress tests with synthetic images.
+
+## Fase 3 Logos y Color
+
+- Added `core/logo_tools.py` for dominant colors, color reduction, black/white to transparency, color unification, color separation, and layer export.
+- Activated `features/logos/` with service methods for palette, reduction, and layers.
+- Added advanced Herramientas para logos controls.
+- Added palette and color-layer QA views.
+- Added ZIP artifacts `layer_01_color.png`, `palette.json`, and `logo_report.json` when logo separation/export is enabled.
+- Added logo tool tests with synthetic flat-color images.

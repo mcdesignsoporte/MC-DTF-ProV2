@@ -69,6 +69,15 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         bleed_px=options.bleed_px,
         create_cutline=options.create_cutline,
         min_printable_mm=options.min_printable_mm,
+        logo_detect_colors=options.logo_detect_colors,
+        logo_reduce_colors=options.logo_reduce_colors,
+        logo_black_to_transparent=options.logo_black_to_transparent,
+        logo_white_to_transparent=options.logo_white_to_transparent,
+        logo_unify_colors=options.logo_unify_colors,
+        logo_separate_colors=options.logo_separate_colors,
+        logo_export_layers=options.logo_export_layers,
+        logo_max_colors=options.logo_max_colors,
+        logo_color_tolerance=options.logo_color_tolerance,
         max_ai_side=options.max_ai_side,
         upscale=options.upscale,
         dpi=options.dpi,
@@ -167,6 +176,9 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["cutline_mask"] = result_payload.get("cutline_mask")
         st.session_state["small_elements_mask"] = result_payload.get("small_elements_mask")
         st.session_state["small_elements_report"] = result_payload.get("small_elements_report")
+        st.session_state["logo_report"] = result_payload.get("logo_report")
+        st.session_state["logo_palette"] = result_payload.get("logo_palette")
+        st.session_state["logo_layers"] = result_payload.get("logo_layers")
         extra_files = dict(result_payload.get("dtf_extra_files") or {})
         metadata_extra = dict(result_payload.get("metadata_extra") or {})
 
@@ -259,6 +271,9 @@ if "result_img" in st.session_state:
         st.session_state.get("cutline_mask"),
         st.session_state.get("small_elements_mask"),
         st.session_state.get("small_elements_report"),
+        st.session_state.get("logo_report"),
+        st.session_state.get("logo_palette"),
+        st.session_state.get("logo_layers"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(

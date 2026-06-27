@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -8,6 +8,5 @@ class FeatureSchema:
     """Metadata contract for the logos module."""
 
     id: str = "logos"
-    status: str = "planned"
-    phase: int = 1
-
+    status: str = "active"
+    phase: int = 3
