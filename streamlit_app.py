@@ -58,6 +58,7 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         protect_white_details=options.protect_white_details,
         white_protection_level=options.white_protection_level,
         fine_detail_level=options.fine_detail_level,
+        safe_mode=options.safe_mode,
         max_ai_side=options.max_ai_side,
         upscale=options.upscale,
         dpi=options.dpi,
@@ -142,6 +143,12 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["white_mask"] = result_payload.get("white_mask")
         st.session_state["fine_detail_protection"] = result_payload.get("fine_detail_protection")
         st.session_state["fine_detail_mask"] = result_payload.get("fine_detail_mask")
+        st.session_state["artwork_mask"] = result_payload.get("artwork_mask")
+        st.session_state["background_mask"] = result_payload.get("background_mask")
+        st.session_state["doubtful_mask"] = result_payload.get("doubtful_mask")
+        st.session_state["restored_mask"] = result_payload.get("restored_mask")
+        st.session_state["art_loss_risk"] = result_payload.get("art_loss_risk")
+        st.session_state["non_destructive_stats"] = result_payload.get("non_destructive_stats")
         extra_files = {}
 
         if options.make_halftone:
@@ -219,6 +226,12 @@ if "result_img" in st.session_state:
         st.session_state.get("white_protection"),
         st.session_state.get("fine_detail_mask"),
         st.session_state.get("fine_detail_protection"),
+        st.session_state.get("artwork_mask"),
+        st.session_state.get("background_mask"),
+        st.session_state.get("doubtful_mask"),
+        st.session_state.get("restored_mask"),
+        st.session_state.get("art_loss_risk"),
+        st.session_state.get("non_destructive_stats"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(

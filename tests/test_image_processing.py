@@ -21,6 +21,9 @@ from core.preview import alpha_preview, before_after_preview, checkerboard, comp
 from core.quality import alpha_histogram, evaluate_dtf_quality
 from core.export import build_export_package
 from core.white_protection import build_protection_mask, protect_white_regions
+from core.artwork_mask import build_artwork_mask
+from core.background_confirm import confirm_background_mask
+from core.non_destructive_clean import non_destructive_clean, estimate_art_loss_risk, restore_artwork_pixels
 
 
 class ImageProcessingTests(unittest.TestCase):
@@ -236,6 +239,67 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual(255, alpha[35, 28])
         self.assertTrue(mask[35, 28])
 
+    def test_non_destructive_keeps_pink_car_body_and_removes_white_background(self):
+        img = _synthetic_car()
+
+        result = non_destructive_clean(img, min_area=6, background_tolerance=48, safe_mode=True)
+
+        self.assertEqual(255, result.image.getpixel((48, 42))[3])
+        self.assertEqual(255, result.image.getpixel((38, 56))[3])
+        self.assertEqual(0, result.image.getpixel((2, 2))[3])
+        self.assertTrue(result.artwork_mask[42, 48])
+        self.assertGreater(result.stats["background_removed"], 0)
+
+    def test_non_destructive_keeps_wheel_white_details(self):
+        img = _synthetic_car()
+
+        result = non_destructive_clean(img, min_area=8, background_tolerance=48, safe_mode=True)
+
+        self.assertEqual(255, result.image.getpixel((35, 55))[3])
+        self.assertEqual(255, result.image.getpixel((75, 55))[3])
+
+    def test_background_confirm_only_removes_edge_connected_uniform_area(self):
+        img = _synthetic_car()
+        artwork = build_artwork_mask(img)
+        background = confirm_background_mask(img, artwork.artwork_mask, artwork.main_bbox, tolerance=48)
+
+        self.assertTrue(background[0, 0])
+        self.assertFalse(background[42, 48])
+        self.assertFalse(background[55, 35])
+
+    def test_non_destructive_keeps_white_letters_on_black_background(self):
+        img = Image.new("RGBA", (80, 50), (0, 0, 0, 255))
+        for x in range(20, 60):
+            for y in range(18, 32):
+                img.putpixel((x, y), (255, 255, 255, 255))
+
+        result = non_destructive_clean(img, min_area=6, background_tolerance=35, safe_mode=True)
+
+        self.assertEqual(255, result.image.getpixel((30, 24))[3])
+
+    def test_non_destructive_keeps_near_splashes_and_removes_far_noise(self):
+        img = _synthetic_car()
+        img.putpixel((82, 36), (255, 0, 160, 255))
+        img.putpixel((4, 78), (80, 80, 80, 255))
+
+        result = non_destructive_clean(img, min_area=8, background_tolerance=48, safe_mode=True)
+
+        self.assertEqual(255, result.image.getpixel((82, 36))[3])
+        self.assertEqual(0, result.image.getpixel((4, 78))[3])
+
+    def test_art_loss_risk_detects_and_restores_artwork_pixels(self):
+        img = _synthetic_car()
+        artwork = build_artwork_mask(img)
+        damaged = img.copy()
+        damaged.putpixel((48, 42), (255, 80, 180, 0))
+
+        risk = estimate_art_loss_risk(img, damaged, artwork.artwork_mask, artwork.main_bbox)
+        restored, mask = restore_artwork_pixels(img, damaged, artwork.artwork_mask)
+
+        self.assertTrue(risk["risk_detected"])
+        self.assertTrue(mask[42, 48])
+        self.assertEqual(255, restored.getpixel((48, 42))[3])
+
     def test_zip_contains_generated_assets(self):
         img = Image.new("RGBA", (8, 8), (255, 0, 0, 255))
         png_payload = image_to_png_bytes(img)
@@ -316,6 +380,7 @@ class ImageProcessingTests(unittest.TestCase):
             protect_white_details=True,
             white_protection_level="normal",
             fine_detail_level="maxima",
+            safe_mode=True,
             max_ai_side=1200,
             upscale=1,
             dpi=300,
@@ -352,3 +417,26 @@ class ImageProcessingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _synthetic_car() -> Image.Image:
+    img = Image.new("RGBA", (100, 80), (255, 255, 255, 255))
+    for x in range(20, 82):
+        for y in range(34, 54):
+            img.putpixel((x, y), (255, 80, 180, 255))
+    for x in range(34, 68):
+        for y in range(24, 38):
+            img.putpixel((x, y), (255, 120, 200, 255))
+    for x in range(40, 58):
+        for y in range(27, 36):
+            img.putpixel((x, y), (160, 220, 255, 255))
+    for cx in [35, 75]:
+        for x in range(cx - 8, cx + 9):
+            for y in range(50, 67):
+                if (x - cx) ** 2 + (y - 58) ** 2 <= 64:
+                    img.putpixel((x, y), (25, 25, 25, 255))
+                if (x - cx) ** 2 + (y - 58) ** 2 <= 16:
+                    img.putpixel((x, y), (245, 245, 245, 255))
+    for x in range(18, 84):
+        img.putpixel((x, 33), (20, 20, 20, 255))
+    return img

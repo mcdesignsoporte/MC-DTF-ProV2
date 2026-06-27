@@ -29,6 +29,7 @@ class ProcessingOptions:
     protect_white_details: bool
     white_protection_level: str
     fine_detail_level: str
+    safe_mode: bool
     max_ai_side: int
     upscale: int
     dpi: int
@@ -41,6 +42,7 @@ class ProcessingOptions:
 
 
 LABEL_TO_MODE = {
+    "Seguro": "Conservador Profesional",
     "Automático": "Preparar DTF",
     "Fotografía": "Fotografia",
     "Diseño DTF": "Conservar Diseno",
@@ -183,6 +185,10 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
             "Proteger letras, logos, humo, salpicaduras y contornos finos",
             value=bool(mode.get("protect_details", True)),
         )
+        safe_mode = st.checkbox(
+            "Modo seguro: no borrar arte",
+            value=bool(mode.get("safe_mode", True)),
+        )
         protect_white_details = st.checkbox(
             "Proteger blancos importantes",
             value=bool(mode.get("protect_white_details", True)),
@@ -208,6 +214,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "upscale": upscale,
         "black_level": black_level.lower(),
         "protect_details": protect_details,
+        "safe_mode": safe_mode,
         "protect_white_details": protect_white_details,
         "white_protection_level": white_protection_level.lower(),
         "fine_detail_level": fine_detail_level.lower(),
@@ -266,6 +273,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         black_level=str(controls["black_level"]),
         color_tolerance=int(controls["color_tolerance"]),
         protect_details=bool(controls["protect_details"]),
+        safe_mode=bool(controls["safe_mode"]),
         protect_white_details=bool(controls["protect_white_details"]),
         white_protection_level=str(controls["white_protection_level"]),
         fine_detail_level=str(controls["fine_detail_level"]),

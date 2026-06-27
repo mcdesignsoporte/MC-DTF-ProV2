@@ -88,3 +88,13 @@
 - Added statistics for fine details detected, details protected, noise removed, and components removed.
 - Converted technical trash cleanup into safe levels: Muy suave, Suave, Normal, and Fuerte.
 - Added tests for small splashes, thin lines, decorative dots, isolated noise, contours, and letter texture.
+
+## V4.5.0
+
+- Added professional non-destructive engine: protect artwork first, remove only confirmed background, restore protected pixels, then export.
+- Added main artwork mask using alpha, Canny edges, saturation, local contrast, connected components, center distance, non-background color, and expanded bounding box.
+- Added confirmed background removal for uniform low-detail regions connected to canvas edges and outside protected artwork.
+- Added Conservador Profesional mode and default safe mode: no borrar arte.
+- Added automatic art-loss risk detection and restoration metadata.
+- Added QA tabs for Fondo eliminado, Arte protegido, Detalles protegidos, and Riesgo de perdida.
+- Added tests for pink car body, wheels, white letters, nearby splashes, isolated noise, and edge-connected background.

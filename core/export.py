@@ -47,9 +47,12 @@ def build_export_package(
     extra_files: dict[str, bytes] | None = None,
     original: Image.Image | None = None,
     processing_seconds: float = 0.0,
+    metadata_extra: dict[str, str] | None = None,
 ) -> dict[str, bytes]:
     """Create PNG, PDF, and ZIP payloads without changing image dimensions."""
     metadata = default_metadata(mode, dpi, processing_seconds, f"{img.width} x {img.height}px")
+    if metadata_extra:
+        metadata.update({key: str(value) for key, value in metadata_extra.items()})
     png = png_bytes(img, dpi=dpi, metadata=metadata)
     pdf = pdf_bytes(img, dpi=dpi)
     files = {

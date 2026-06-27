@@ -13,6 +13,7 @@ from core.clean import clean_alpha_with_stats, trim_transparent
 from core.export import build_export_package
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
+from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
 from core.white_protection import protect_white_regions
 
 logger = get_logger(__name__)
@@ -38,6 +39,7 @@ class PipelineSettings:
     protect_white_details: bool
     white_protection_level: str
     fine_detail_level: str
+    safe_mode: bool
     max_ai_side: int
     upscale: int
     dpi: int
@@ -60,6 +62,7 @@ def process_artwork(
     white_mask = None
     fine_stats: dict[str, object] | None = None
     fine_mask = None
+    nd_result = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
@@ -68,9 +71,18 @@ def process_artwork(
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
-    if settings.remove_black:
+    use_non_destructive = settings.safe_mode or settings.mode_key == "professional_safe"
+    if use_non_destructive and not auto_photo:
+        nd_result = non_destructive_clean(
+            work,
+            min_area=settings.despeckle_area,
+            background_tolerance=settings.color_tolerance,
+            safe_mode=True,
+        )
+        work = nd_result.image
+    elif settings.remove_black:
         work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details, level=settings.black_level)
-    if (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
+    if not use_non_destructive and (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
         work = _remove_auto_background(work, detection, settings)
     if settings.protect_white_details and not auto_photo:
         work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
@@ -85,18 +97,40 @@ def process_artwork(
             fine_detail_level=fine_level,
         )
         fine_stats = stats.to_dict()
+    if nd_result is not None:
+        risk_after_clean = estimate_art_loss_risk(white_source, work, nd_result.artwork_mask)
+        if bool(risk_after_clean.get("risk_detected", False)):
+            work, restored_after_clean = restore_artwork_pixels(white_source, work, nd_result.artwork_mask)
+            nd_result.stats["restored_pixels"] = int(nd_result.stats.get("restored_pixels", 0)) + int(restored_after_clean.sum())
+            nd_result.risk.clear()
+            nd_result.risk.update(estimate_art_loss_risk(white_source, work, nd_result.artwork_mask))
     if settings.trim:
         work = trim_transparent(work, padding=20)
     work = fit_to_print_size(work, width_cm=settings.width_cm, height_cm=settings.height_cm, dpi=settings.dpi)
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
-    exports = build_export_package(work, dpi=settings.dpi, prefix=prefix, mode=settings.mode_key, original=img, processing_seconds=round(perf_counter() - started, 3))
+    metadata_extra = _metadata_extra(nd_result)
+    exports = build_export_package(
+        work,
+        dpi=settings.dpi,
+        prefix=prefix,
+        mode=settings.mode_key,
+        original=img,
+        processing_seconds=round(perf_counter() - started, 3),
+        metadata_extra=metadata_extra,
+    )
     return {
         "image": work,
         "white_protection": white_stats,
         "white_mask": white_mask,
         "fine_detail_protection": fine_stats,
         "fine_detail_mask": fine_mask,
+        "artwork_mask": nd_result.artwork_mask if nd_result else None,
+        "background_mask": nd_result.background_mask if nd_result else None,
+        "doubtful_mask": nd_result.doubtful_mask if nd_result else None,
+        "restored_mask": nd_result.restored_mask if nd_result else None,
+        "art_loss_risk": nd_result.risk if nd_result else None,
+        "non_destructive_stats": nd_result.stats if nd_result else None,
         **exports,
     }
 
@@ -131,3 +165,14 @@ def _fine_level(settings: PipelineSettings, detection: dict[str, object]) -> str
     if mode in {"preserve_artwork", "color_bg", "black_bg", "dark_artwork"}:
         return "maxima"
     return settings.fine_detail_level
+
+
+def _metadata_extra(nd_result) -> dict[str, str]:
+    if nd_result is None:
+        return {}
+    return {
+        "riesgo_perdida": str(nd_result.risk.get("risk_detected", False)),
+        "pixeles_restaurados": str(nd_result.stats.get("restored_pixels", 0)),
+        "fondo_eliminado": str(nd_result.stats.get("background_removed", 0)),
+        "arte_protegido": str(nd_result.stats.get("artwork_protected", 0)),
+    }
