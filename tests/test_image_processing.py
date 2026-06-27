@@ -83,6 +83,15 @@ class ImageProcessingTests(unittest.TestCase):
         reopened = Image.open(BytesIO(package["png"]))
         self.assertEqual((18, 12), reopened.size)
 
+    def test_detector_recommends_transparent_png_without_ai(self):
+        img = Image.new("RGBA", (32, 32), (255, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (12, 12), (255, 0, 0, 255)), (10, 10))
+
+        result = detect(img)
+
+        self.assertEqual("transparent_png", result["recommended_mode"])
+        self.assertFalse(result["use_ai"])
+
 
 if __name__ == "__main__":
     unittest.main()

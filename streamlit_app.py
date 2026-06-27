@@ -8,6 +8,7 @@ from core.background import (
     has_transparency,
     remove_background_ai,
     resize_for_ai,
+    should_use_ai,
 )
 from core.black_remove import remove_black_background
 from core.clean import clean_alpha, trim_transparent
@@ -24,12 +25,6 @@ from ui.sidebar import render_sidebar
 
 APP_VERSION = "V4.0.0"
 MODE_KEYS = {mode["key"]: name for name, mode in MODES.items()}
-DETECTOR_TO_MODE_KEY = {
-    "photo": "photo_bg",
-    "png": "transparent_png",
-    "dark": "black_bg",
-    "white": "dtf_ready",
-}
 
 st.set_page_config(page_title=f"MC DTF Pro {APP_VERSION}", page_icon="MC", layout="wide")
 
@@ -56,7 +51,12 @@ def cached_session():
     return get_rembg_session()
 
 
-uploaded = st.file_uploader("Sube una imagen", type=["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"])
+uploaded_files = st.file_uploader(
+    "Upload one or more images",
+    type=["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
+    accept_multiple_files=True,
+)
+uploaded = uploaded_files[0] if uploaded_files else None
 original = None
 detected = None
 recommended_mode_name = None
@@ -65,8 +65,7 @@ if uploaded:
     try:
         original = load_uploaded_image(uploaded)
         detected = detect(original)
-        recommended_key = DETECTOR_TO_MODE_KEY.get(detected["recommended"], "dtf_ready")
-        recommended_mode_name = MODE_KEYS.get(recommended_key)
+        recommended_mode_name = MODE_KEYS.get(str(detected["recommended_mode"]))
     except Exception as exc:
         st.error(f"No se pudo abrir la imagen: {exc}")
         st.stop()
@@ -87,58 +86,45 @@ if original is None:
     st.stop()
 
 if detected and recommended_mode_name:
-    st.success(f"Detector automatico: {detected['name']} -> modo recomendado: {recommended_mode_name}")
+    st.success(f"Detected: {detected['type']} | Recommendation: {recommended_mode_name}")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Estimated time", f"{detected['estimated_seconds']}s")
+    c2.metric("Resolution", str(detected["resolution"]))
+    c3.metric("Black", f"{detected['black_percent']}%")
+    c4.metric("Edges", f"{detected['edge_density']}%")
 
 render_input_summary(original, mode_name, mode)
 
-if st.button("Procesar imagen", type="primary", use_container_width=True):
+def process_image(original_img, detection: dict[str, object], filename: str = "image") -> dict[str, object]:
+    """Run the selected pipeline and return images plus export payloads."""
+    work = original_img.copy()
+    if options.use_ai and should_use_ai(detection, mode["key"]) and not has_transparency(work):
+        ai_img = resize_for_ai(work, max_side=options.max_ai_side)
+        ai_result = remove_background_ai(ai_img, session=cached_session())
+        work = apply_ai_alpha_to_original(work, ai_result)
+    if options.remove_black:
+        work = remove_black_background(work, threshold=options.black_threshold, softness=12, protect_details=options.protect_details)
+    if options.clean_enabled:
+        work = clean_alpha(work, alpha_cut=options.alpha_cut, despeckle_area=options.despeckle_area, edge_contract=options.edge_contract)
+    if options.trim:
+        work = trim_transparent(work, padding=20)
+    work = fit_to_print_size(work, width_cm=options.width_cm, height_cm=options.height_cm, dpi=options.dpi)
+    if options.upscale > 1:
+        work = upscale_and_sharpen(work, scale=options.upscale)
+    exports = build_export_package(work, dpi=options.dpi, prefix=filename, mode=str(mode["key"]))
+    return {"image": work, **exports}
+
+
+if st.button("Process image", type="primary", use_container_width=True):
     progress = st.progress(0)
     log = st.empty()
     t0 = time.time()
 
     try:
-        work = original.copy()
-        log.write("1/7 Preparando imagen...")
+        log.write("1/3 Processing image...")
         progress.progress(10)
-
-        if options.use_ai and not has_transparency(work):
-            log.write("2/7 Quitando fondo con IA...")
-            ai_img = resize_for_ai(work, max_side=options.max_ai_side)
-            session = cached_session()
-            ai_result = remove_background_ai(ai_img, session=session)
-            work = apply_ai_alpha_to_original(work, ai_result)
-        else:
-            log.write("2/7 IA saltada...")
-        progress.progress(25)
-
-        if options.remove_black:
-            log.write("3/7 Quitando fondo negro sin borrar letras...")
-            work = remove_black_background(work, threshold=options.black_threshold, softness=12, protect_details=options.protect_details)
-        else:
-            log.write("3/7 Quitar negro saltado...")
-        progress.progress(45)
-
-        if options.clean_enabled:
-            log.write("4/7 Limpiando semitransparencias y pixeles basura...")
-            work = clean_alpha(work, alpha_cut=options.alpha_cut, despeckle_area=options.despeckle_area, edge_contract=options.edge_contract)
-        else:
-            log.write("4/7 Limpieza alfa saltada para conservar diseno...")
-        progress.progress(60)
-
-        if options.trim:
-            log.write("5/7 Recortando espacio transparente...")
-            work = trim_transparent(work, padding=20)
-        else:
-            log.write("5/7 Recorte saltado...")
-        progress.progress(70)
-
-        log.write("6/7 Ajustando medida/resolucion...")
-        work = fit_to_print_size(work, width_cm=options.width_cm, height_cm=options.height_cm, dpi=options.dpi)
-        if options.upscale > 1:
-            work = upscale_and_sharpen(work, scale=options.upscale)
-        progress.progress(82)
-
-        log.write("7/7 Preparando descargas...")
+        result_payload = process_image(original, detected or {}, "mc_dtf_pro_v4")
+        work = result_payload["image"]
         st.session_state["result_img"] = work
         extra_files = {}
 
@@ -153,7 +139,8 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
             for key in ["halftone_img", "halftone_png", "halftone_pdf"]:
                 st.session_state.pop(key, None)
 
-        exports = build_export_package(work, dpi=options.dpi, extra_files=extra_files)
+        log.write("2/3 Preparing downloads...")
+        exports = build_export_package(work, dpi=options.dpi, mode=str(mode["key"]), extra_files=extra_files)
         st.session_state["result_png"] = exports["png"]
         st.session_state["result_pdf"] = exports["pdf"]
         st.session_state["result_zip"] = exports["zip"]
@@ -163,10 +150,23 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
     except Exception as exc:
         log.error(f"Error al procesar: {exc}")
 
+if len(uploaded_files or []) > 1 and st.button("Process batch", use_container_width=True):
+    batch_files = {}
+    progress = st.progress(0)
+    for index, file in enumerate(uploaded_files or [], start=1):
+        img = load_uploaded_image(file)
+        payload = process_image(img, detect(img), file.name.rsplit(".", 1)[0])
+        batch_files[f"{file.name.rsplit('.', 1)[0]}.png"] = payload["png"]
+        batch_files[f"{file.name.rsplit('.', 1)[0]}.pdf"] = payload["pdf"]
+        progress.progress(index / len(uploaded_files))
+    from core.image_io import make_zip_bytes
+
+    st.download_button("Download batch ZIP", make_zip_bytes(batch_files), "mc_dtf_pro_v4_batch.zip", "application/zip", use_container_width=True)
+
 if "result_img" in st.session_state:
     st.divider()
     st.subheader("Resultado")
-    bg_mode = st.radio("Vista previa", ["Transparente", "Negro", "Blanco", "Gris"], horizontal=True)
+    bg_mode = st.radio("Preview", ["Transparent", "Black shirt", "White shirt", "Sticker", "Mug", "Beer mug", "Hoodie"], horizontal=True)
     preview = composite_preview(st.session_state["result_img"], bg_mode)
 
     col_a, col_b = st.columns([2, 1])

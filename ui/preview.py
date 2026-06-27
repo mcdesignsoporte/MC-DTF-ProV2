@@ -11,9 +11,9 @@ def render_input_summary(original: Image.Image, mode_name: str, mode: dict) -> N
     with right:
         st.subheader("Modo seleccionado")
         st.success(mode_name)
-        if mode["key"] in ["black_bg", "dark_design"]:
+        if mode["key"] in ["black_bg", "dark_artwork"]:
             st.warning("Elimina negro puro y conserva letras, grises, cromados y efectos blancos.")
-        elif mode["key"] == "preserve_full":
+        elif mode["key"] == "preserve_artwork":
             st.info("Conserva el diseno completo sin eliminar fondo.")
 
 
