@@ -1,7 +1,10 @@
 __pycache__/
-*.py[cod]
+*.pyc
 .pytest_cache/
 .venv/
 venv/
+.DS_Store
+build/
+dist/
 .streamlit/secrets.toml
 .streamlit-run*.log

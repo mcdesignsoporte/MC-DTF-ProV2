@@ -60,19 +60,26 @@ class ProcessingOptions:
 
 LABEL_TO_MODE = {
     "Seguro": "Conservador Profesional",
-    "Automático": "Preparar DTF",
+    "Automático": "Automatico",
     "Fotografía": "Fotografia",
     "Diseño DTF": "Conservar Diseno",
     "PNG Transparente": "PNG Transparente",
+    "Fondo negro": "Quitar Fondo Negro",
+    "Diseño oscuro": "Diseno Oscuro",
     "Fondo de color": "Fondo de color",
     "Preparar DTF": "Preparar DTF",
 }
 
 MODE_TO_LABEL = {
-    "Quitar Fondo Negro": "Fondo de color",
-    "Diseno Oscuro": "Fondo de color",
-    "Conservar Diseno": "Diseño DTF",
+    "Automatico": "Automático",
+    "Conservador Profesional": "Seguro",
     "Fotografia": "Fotografía",
+    "Conservar Diseno": "Diseño DTF",
+    "PNG Transparente": "PNG Transparente",
+    "Quitar Fondo Negro": "Fondo negro",
+    "Diseno Oscuro": "Diseño oscuro",
+    "Fondo de color": "Fondo de color",
+    "Preparar DTF": "Preparar DTF",
 }
 
 
