@@ -24,6 +24,9 @@ class DetectionResult:
     noise_score: float
     shadow_score: float
     splash_score: float
+    color_count: float
+    density_score: float
+    confidence: float
     background: str
     dominant_color: str
     background_uniformity: float
@@ -44,13 +47,14 @@ def detect(img: Image.Image) -> dict[str, object]:
     metrics = _metrics(rgb, alpha, gray)
     dominant = dominant_background_color(img)
     metrics["background_uniformity"] = background_uniformity(img, dominant)
-    kind, mode, use_ai = _classify(metrics)
+    kind, mode, use_ai, confidence = _classify(metrics)
     return DetectionResult(
         type=kind,
         recommended_mode=mode,
         use_ai=use_ai,
         background=_background_label(metrics),
         dominant_color=_hex_color(dominant),
+        confidence=round(confidence, 2),
         estimated_seconds=_estimate_seconds(img.width, img.height, use_ai),
         resolution=f"{img.width} x {img.height}px",
         **{key: round(value, 2) for key, value in metrics.items()},
@@ -73,6 +77,8 @@ def _metrics(rgb: np.ndarray, alpha: np.ndarray, gray: np.ndarray) -> dict[str, 
         "noise_score": _noise_score(gray),
         "shadow_score": _shadow_score(rgb, gray),
         "splash_score": _splash_score(rgb, edges),
+        "color_count": _color_count(rgb),
+        "density_score": _density_score(alpha, edges),
     }
 
 
@@ -122,22 +128,37 @@ def _splash_score(rgb: np.ndarray, edges: np.ndarray) -> float:
     return min(100.0, _percent(bright) * 0.8 + _percent(edges > 0))
 
 
-def _classify(m: dict[str, float]) -> tuple[str, str, bool]:
+def _color_count(rgb: np.ndarray) -> float:
+    preview = rgb
+    side = max(preview.shape[:2])
+    if side > 420:
+        scale = 420 / side
+        preview = cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    quantized = (preview.reshape(-1, 3) // 32) * 32
+    return float(len(np.unique(quantized, axis=0)))
+
+
+def _density_score(alpha: np.ndarray, edges: np.ndarray) -> float:
+    opaque = _percent(alpha > 20)
+    return min(100.0, opaque * 0.5 + _percent(edges > 0) * 3)
+
+
+def _classify(m: dict[str, float]) -> tuple[str, str, bool, float]:
     if m["transparency_percent"] > 2:
-        return "PNG transparente", "transparent_png", False
+        return "PNG Transparente", "transparent_png", False, min(98.0, 72 + m["transparency_percent"])
     if m["black_percent"] > 55 and m["text_score"] < 65:
-        return "Fondo negro", "black_bg", False
+        return "Fondo negro", "black_bg", False, min(96.0, 60 + m["black_percent"] * 0.45)
     if m["background_uniformity"] > 62 and m["edge_density"] > 2:
-        return "Fondo de color", "color_bg", False
+        return "Fondo de color", "color_bg", False, min(95.0, 50 + m["background_uniformity"] * 0.5)
     if m["black_percent"] > 32 and (m["shadow_score"] > 8 or m["splash_score"] > 18):
-        return "Diseno oscuro", "dark_artwork", False
+        return "Diseno oscuro", "dark_artwork", False, 84.0
     if m["white_percent"] > 68 and m["edge_density"] > 3:
-        return "Fondo blanco", "dtf_ready", False
-    if m["logo_score"] > 45 and m["text_score"] > 12:
-        return "Logo", "preserve_artwork", False
-    if m["edge_density"] > 10 or m["splash_score"] > 18:
-        return "Diseno DTF", "preserve_artwork", False
-    return "Fotografia", "photograph", True
+        return "Fondo blanco", "color_bg", False, min(94.0, 55 + m["white_percent"] * 0.45)
+    if m["logo_score"] > 45 and m["text_score"] > 12 and m["color_count"] < 180:
+        return "Logo", "preserve_artwork", False, min(92.0, 62 + m["logo_score"] * 0.35)
+    if m["edge_density"] > 10 or m["splash_score"] > 18 or m["density_score"] > 55:
+        return "Diseno DTF", "preserve_artwork", False, 82.0
+    return "Fotografia", "photograph", True, 78.0
 
 
 def _background_label(m: dict[str, float]) -> str:

@@ -43,7 +43,7 @@ def _object_background(size: tuple[int, int], label: str) -> Image.Image:
         draw.ellipse((w * 0.24, h * 0.78, w * 0.78, h * 0.9), fill=(0, 0, 0, 32))
         draw.rounded_rectangle((w * 0.25, h * 0.2, w * 0.7, h * 0.82), radius=30, fill=(255, 255, 255, 255), outline=(180, 180, 180, 255), width=3)
         draw.ellipse((w * 0.64, h * 0.34, w * 0.86, h * 0.62), outline=(180, 180, 180, 255), width=8)
-        if "beer" in label.lower():
+        if "beer" in label.lower() or "tarro" in label.lower():
             draw.rectangle((w * 0.29, h * 0.22, w * 0.66, h * 0.36), fill=(231, 177, 67, 220))
     else:
         draw.ellipse((w * 0.2, h * 0.78, w * 0.8, h * 0.9), fill=(0, 0, 0, 25))
@@ -62,22 +62,22 @@ def _studio_background(size: tuple[int, int]) -> Image.Image:
 
 def _background(size: tuple[int, int], mode: str) -> Image.Image:
     lower = mode.lower()
-    if "transparent" in lower:
+    if "transparent" in lower or "transparente" in lower:
         return _checkerboard(size)
-    if "black shirt" in lower:
-        return _garment_background(size, (12, 12, 12), "Black shirt")
-    if "white shirt" in lower:
-        return _garment_background(size, (250, 250, 250), "White shirt")
-    if "hoodie" in lower:
-        return _garment_background(size, (38, 38, 42), "Hoodie")
-    if "mug" in lower:
+    if "black shirt" in lower or "playera negra" in lower:
+        return _garment_background(size, (12, 12, 12), "Playera negra")
+    if "white shirt" in lower or "playera blanca" in lower:
+        return _garment_background(size, (250, 250, 250), "Playera blanca")
+    if "hoodie" in lower or "sudadera" in lower:
+        return _garment_background(size, (38, 38, 42), "Sudadera")
+    if "mug" in lower or "taza" in lower or "tarro" in lower:
         return _object_background(size, mode)
     if "sticker" in lower:
         return _object_background(size, "Sticker")
     return Image.new("RGBA", size, (130, 130, 130, 255))
 
 
-def composite_preview(img: Image.Image, mode: str = "Transparent", max_side: int = 1400) -> Image.Image:
+def composite_preview(img: Image.Image, mode: str = "Transparente", max_side: int = 1400) -> Image.Image:
     """Create fast commercial previews without changing export resolution."""
     rgba = _fit_preview(img, max_side)
     bg = _background(rgba.size, mode)
@@ -85,7 +85,7 @@ def composite_preview(img: Image.Image, mode: str = "Transparent", max_side: int
     return bg
 
 
-def before_after_preview(before: Image.Image, after: Image.Image, mode: str = "Transparent", max_side: int = 1200) -> Image.Image:
+def before_after_preview(before: Image.Image, after: Image.Image, mode: str = "Transparente", max_side: int = 1200) -> Image.Image:
     """Create a side-by-side visual comparison with a center divider."""
     left = composite_preview(before, mode=mode, max_side=max_side // 2)
     right = composite_preview(after, mode=mode, max_side=max_side // 2)
@@ -105,7 +105,7 @@ def alpha_difference_preview(before: Image.Image, after: Image.Image, max_side: 
     diff = ImageChops.difference(before_alpha, after_alpha)
     heat = Image.new("RGBA", before_alpha.size, (255, 210, 0, 0))
     heat.putalpha(diff)
-    base = composite_preview(before, "Black shirt", max_side=max_side)
+    base = composite_preview(before, "Playera negra", max_side=max_side)
     base.alpha_composite(heat)
     return base
 

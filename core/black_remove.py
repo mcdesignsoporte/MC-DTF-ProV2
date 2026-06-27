@@ -7,6 +7,13 @@ from PIL import Image
 from core.detail_protect import detail_protection_mask, restore_protected_alpha
 
 
+LEVELS = {
+    "suave": {"threshold": -4, "softness": 18},
+    "normal": {"threshold": 0, "softness": 14},
+    "fuerte": {"threshold": 8, "softness": 10},
+}
+
+
 def _black_candidates(rgb: np.ndarray, threshold: int) -> tuple[np.ndarray, np.ndarray]:
     maxc = rgb.max(axis=2).astype(np.float32)
     minc = rgb.min(axis=2).astype(np.float32)
@@ -36,8 +43,17 @@ def _soft_alpha(alpha: np.ndarray, rgb: np.ndarray, remove_mask: np.ndarray, thr
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def remove_black_background(img: Image.Image, threshold: int = 24, softness: int = 14, protect_details: bool = True) -> Image.Image:
+def remove_black_background(
+    img: Image.Image,
+    threshold: int = 24,
+    softness: int = 14,
+    protect_details: bool = True,
+    level: str = "normal",
+) -> Image.Image:
     """Remove pure background black while preserving letters, outlines, shadows, and artwork detail."""
+    config = LEVELS.get(level.lower(), LEVELS["normal"])
+    threshold = max(1, threshold + int(config["threshold"]))
+    softness = int(config["softness"]) if softness == 14 else softness
     rgba = img.convert("RGBA")
     arr = np.array(rgba)
     rgb = arr[:, :, :3]

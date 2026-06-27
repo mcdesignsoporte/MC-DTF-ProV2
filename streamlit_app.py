@@ -12,6 +12,7 @@ from core.halftone import make_halftone
 from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_image
 from core.modes import MODES
 from core.pipeline import PipelineSettings, process_artwork
+from core.presets import preset_for_mode
 from core.preview import alpha_difference_preview, before_after_preview, composite_preview
 from core.constants import SUPPORTED_FORMATS
 from core.version import AUTHOR, NAME, VERSION
@@ -51,6 +52,7 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         despeckle_area=options.despeckle_area,
         edge_contract=options.edge_contract,
         black_threshold=options.black_threshold,
+        black_level=options.black_level,
         color_tolerance=options.color_tolerance,
         protect_details=options.protect_details,
         max_ai_side=options.max_ai_side,
@@ -62,7 +64,7 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
 
 
 uploaded_files = st.file_uploader(
-    "Upload one or more images",
+    "Subir imagenes",
     type=list(SUPPORTED_FORMATS),
     accept_multiple_files=True,
 )
@@ -96,29 +98,38 @@ if original is None:
     st.stop()
 
 if detected and recommended_mode_name:
-    st.success(f"Tipo detectado: {detection_value(detected, 'type')} | Recomendacion: {recommended_mode_name}")
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    st.success(f"Imagen analizada | Tipo detectado: {detection_value(detected, 'type')} | Recomendacion: {recommended_mode_name}")
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("Resolucion", str(detection_value(detected, "resolution")))
-    c2.metric("Transparencia", f"{detection_value(detected, 'transparency_percent', 0)}%")
-    c3.metric("Fondo", str(detection_value(detected, "background")))
-    c4.metric("Color", str(detection_value(detected, "dominant_color")))
-    c5.metric("Uniformidad", f"{detection_value(detected, 'background_uniformity', 0)}%")
-    c6.metric("Tiempo", f"{detection_value(detected, 'estimated_seconds', 0)}s")
+    c2.metric("Confianza", f"{detection_value(detected, 'confidence', 0)}%")
+    c3.metric("Transparencia", f"{detection_value(detected, 'transparency_percent', 0)}%")
+    c4.metric("Fondo", str(detection_value(detected, "background")))
+    c5.metric("Color", str(detection_value(detected, "dominant_color")))
+    c6.metric("Uniformidad", f"{detection_value(detected, 'background_uniformity', 0)}%")
+    c7.metric("Tiempo", f"{detection_value(detected, 'estimated_seconds', 0)}s")
+    b1, b2 = st.columns(2)
+    if b1.button("Usar configuracion recomendada", use_container_width=True):
+        st.session_state["selected_mode"] = recommended_mode_name
+        st.rerun()
+    if b2.button("Configurar manualmente", use_container_width=True):
+        st.session_state["manual_config"] = True
+    with st.expander("Configuracion manual", expanded=bool(st.session_state.get("manual_config", False))):
+        st.caption("Selecciona otro modo en la barra superior y ajusta la configuracion avanzada si lo necesitas.")
 
 render_input_summary(original, mode_name, mode)
 
-def process_image(original_img, detection: dict[str, object], filename: str = "image") -> dict[str, object]:
+def process_image(original_img, detection: dict[str, object], filename: str = "image", settings: PipelineSettings | None = None) -> dict[str, object]:
     """Run one image through the shared production pipeline."""
-    return process_artwork(original_img, detection, current_settings(mode, options), session_factory=cached_session, prefix=filename)
+    return process_artwork(original_img, detection, settings or current_settings(mode, options), session_factory=cached_session, prefix=filename)
 
 
-if st.button("Process image", type="primary", use_container_width=True):
+if st.button("Procesar imagen", type="primary", use_container_width=True):
     progress = st.progress(0)
     log = st.empty()
     t0 = time.time()
 
     try:
-        log.write("1/3 Processing image...")
+        log.write("1/3 Procesando imagen...")
         progress.progress(10)
         result_payload = process_image(original, detected or {}, "mc_dtf_pro_v4")
         work = result_payload["image"]
@@ -137,8 +148,8 @@ if st.button("Process image", type="primary", use_container_width=True):
             for key in ["halftone_img", "halftone_png", "halftone_pdf"]:
                 st.session_state.pop(key, None)
 
-        log.write("2/3 Preparing downloads...")
-        exports = build_export_package(work, dpi=options.dpi, mode=str(mode["key"]), extra_files=extra_files)
+        log.write("2/3 Preparando descargas...")
+        exports = build_export_package(work, dpi=options.dpi, mode=str(mode["key"]), extra_files=extra_files, original=original, processing_seconds=round(time.time() - t0, 3))
         st.session_state["result_png"] = exports["png"]
         st.session_state["result_pdf"] = exports["pdf"]
         st.session_state["result_zip"] = exports["zip"]
@@ -148,7 +159,7 @@ if st.button("Process image", type="primary", use_container_width=True):
     except Exception as exc:
         log.error(f"Error al procesar: {exc}")
 
-if len(uploaded_files or []) > 1 and st.button("Process batch", use_container_width=True):
+if len(uploaded_files or []) > 1 and st.button("Procesar lote", use_container_width=True):
     batch_files = {}
     batch_rows = []
     progress = st.progress(0)
@@ -158,25 +169,25 @@ if len(uploaded_files or []) > 1 and st.button("Process batch", use_container_wi
             img = load_uploaded_image(file)
             file_detection = detect(img)
             stem = file.name.rsplit(".", 1)[0]
-            payload = process_image(img, file_detection, stem)
+            recommended_preset = preset_for_mode(str(file_detection.get("recommended_mode", "dtf_ready")))
+            payload = process_image(img, file_detection, stem, current_settings(recommended_preset, options))
             batch_files[f"{stem}.png"] = payload["png"]
             batch_files[f"{stem}.pdf"] = payload["pdf"]
             batch_rows.append({
-                "file": file.name,
-                "status": "ok",
-                "detected": file_detection["type"],
-                "mode": mode_name,
-                "seconds": round(time.time() - started, 2),
-                "resolution": file_detection["resolution"],
+                "Archivo": file.name,
+                "Estado": "ok",
+                "Tipo": file_detection["type"],
+                "Modo": recommended_preset["label"],
+                "Tiempo": round(time.time() - started, 2),
             })
         except Exception as exc:
             batch_rows.append({
-                "file": file.name,
-                "status": "error",
-                "detected": "-",
-                "mode": mode_name,
-                "seconds": round(time.time() - started, 2),
-                "resolution": str(exc),
+                "Archivo": file.name,
+                "Estado": "error",
+                "Tipo": "-",
+                "Modo": "-",
+                "Tiempo": round(time.time() - started, 2),
+                "Detalle": str(exc),
             })
         progress.progress(index / len(uploaded_files))
     from core.image_io import make_zip_bytes
@@ -184,7 +195,7 @@ if len(uploaded_files or []) > 1 and st.button("Process batch", use_container_wi
     st.session_state["batch_rows"] = batch_rows
     render_batch_table(batch_rows)
     if batch_files:
-        st.download_button("Download batch ZIP", make_zip_bytes(batch_files), "mc_dtf_pro_v4_batch.zip", "application/zip", use_container_width=True)
+        st.download_button("Descargar ZIP del lote", make_zip_bytes(batch_files), "mc_dtf_pro_v4_lote.zip", "application/zip", use_container_width=True)
 
 if "batch_rows" in st.session_state:
     render_batch_table(st.session_state["batch_rows"])
@@ -192,12 +203,12 @@ if "batch_rows" in st.session_state:
 if "result_img" in st.session_state:
     st.divider()
     st.subheader("Resultado")
-    bg_mode = st.radio("Preview", ["Transparent", "Black shirt", "White shirt", "Sticker", "Mug", "Beer mug", "Hoodie"], horizontal=True)
+    bg_mode = st.radio("Vista previa", ["Transparente", "Playera negra", "Playera blanca", "Sticker", "Taza", "Tarro", "Sudadera"], horizontal=True)
     preview = composite_preview(st.session_state["result_img"], bg_mode)
-    qa_mode = st.radio("QA view", ["Final preview", "Before / After", "Alpha changes"], horizontal=True)
-    if qa_mode == "Before / After":
+    qa_mode = st.radio("Revision", ["Resultado final", "Antes / Despues", "Cambios de transparencia"], horizontal=True)
+    if qa_mode == "Antes / Despues":
         preview = before_after_preview(st.session_state["original_img"], st.session_state["result_img"], bg_mode)
-    elif qa_mode == "Alpha changes":
+    elif qa_mode == "Cambios de transparencia":
         preview = alpha_difference_preview(st.session_state["original_img"], st.session_state["result_img"])
 
     col_a, col_b = st.columns([2, 1])

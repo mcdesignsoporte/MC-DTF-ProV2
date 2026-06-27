@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from time import perf_counter
 
 from PIL import Image
 
@@ -30,6 +31,7 @@ class PipelineSettings:
     despeckle_area: int
     edge_contract: int
     black_threshold: int
+    black_level: str
     color_tolerance: int
     protect_details: bool
     max_ai_side: int
@@ -47,6 +49,7 @@ def process_artwork(
     prefix: str = "mc_dtf_pro_v4",
 ) -> dict[str, object]:
     """Run the production image pipeline and preserve export resolution unless requested."""
+    started = perf_counter()
     logger.info("Processing %s with mode=%s", prefix, settings.mode_key)
     work = img.convert("RGBA")
     auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
@@ -55,7 +58,7 @@ def process_artwork(
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
     if settings.remove_black:
-        work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details)
+        work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details, level=settings.black_level)
     if (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
         work = _remove_auto_background(work, detection, settings)
     if settings.clean_enabled:
@@ -65,7 +68,7 @@ def process_artwork(
     work = fit_to_print_size(work, width_cm=settings.width_cm, height_cm=settings.height_cm, dpi=settings.dpi)
     if settings.upscale > 1:
         work = upscale_and_sharpen(work, scale=settings.upscale)
-    exports = build_export_package(work, dpi=settings.dpi, prefix=prefix, mode=settings.mode_key)
+    exports = build_export_package(work, dpi=settings.dpi, prefix=prefix, mode=settings.mode_key, original=img, processing_seconds=round(perf_counter() - started, 3))
     return {"image": work, **exports}
 
 
@@ -74,7 +77,7 @@ def _remove_auto_background(img: Image.Image, detection: dict[str, object], sett
     mode = str(detection.get("recommended_mode", ""))
     uniformity = float(detection.get("background_uniformity", 0))
     if mode == "black_bg":
-        return remove_black_background(img, threshold=settings.black_threshold, protect_details=settings.protect_details)
+        return remove_black_background(img, threshold=settings.black_threshold, protect_details=settings.protect_details, level=settings.black_level)
     if uniformity >= 52 or mode == "color_bg":
         return remove_dominant_background(img, tolerance=settings.color_tolerance, protect_details=settings.protect_details)
     if settings.mode_key == "auto" and detection.get("type") == "Fotografia":

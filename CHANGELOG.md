@@ -43,3 +43,13 @@
 - Added Auto and Fondo de color workflow support.
 - Preserved details by preventing the color remover from restoring pixels that match the detected background.
 - Added tests for dominant color background removal.
+
+## V4.1.1
+
+- Replaced remaining English UI labels with Spanish labels.
+- Pinned stable dependency versions in `requirements.txt`.
+- Added detector confidence scoring.
+- Added manual/recommended configuration actions after analysis.
+- Added black background removal levels: Suave, Normal, and Fuerte.
+- Updated batch processing so every image uses its detector-recommended mode.
+- Updated ZIP exports to include `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.

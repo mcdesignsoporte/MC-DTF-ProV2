@@ -23,6 +23,7 @@ class ProcessingOptions:
     despeckle_area: int
     edge_contract: int
     black_threshold: int
+    black_level: str
     color_tolerance: int
     protect_details: bool
     max_ai_side: int
@@ -59,6 +60,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         max_ai_side = col_b.slider("Tamano IA", 800, 2400, int(mode["max_ai_side"]), step=100)
         color_tolerance = col_c.slider("Tolerancia color", 8, 96, int(mode["color_tolerance"]))
         upscale = col_a.selectbox("Upscale", [1, 2, 3, 4], index=0, format_func=lambda x: "Original" if x == 1 else f"{x}x")
+        black_level = col_b.selectbox("Nivel fondo negro", ["Suave", "Normal", "Fuerte"], index=1)
         protect_details = st.checkbox("Proteger letras, logos, humo, salpicaduras y contornos finos", value=bool(mode["protect_details"]))
     return {
         "alpha_cut": alpha_cut,
@@ -68,6 +70,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "max_ai_side": max_ai_side,
         "color_tolerance": color_tolerance,
         "upscale": upscale,
+        "black_level": black_level.lower(),
         "protect_details": protect_details,
     }
 
@@ -99,6 +102,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         despeckle_area=int(controls["despeckle_area"]),
         edge_contract=int(controls["edge_contract"]),
         black_threshold=int(controls["black_threshold"]),
+        black_level=str(controls["black_level"]),
         color_tolerance=int(controls["color_tolerance"]),
         protect_details=bool(controls["protect_details"]),
         max_ai_side=int(controls["max_ai_side"]),

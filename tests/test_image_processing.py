@@ -1,6 +1,7 @@
 import unittest
 from io import BytesIO
 from zipfile import ZipFile
+import json
 
 import numpy as np
 from PIL import Image
@@ -58,6 +59,7 @@ class ImageProcessingTests(unittest.TestCase):
         self.assertEqual("black_bg", result["recommended_mode"])
         self.assertEqual("negro", result["background"])
         self.assertIn("dominant_color", result)
+        self.assertGreater(result["confidence"], 70)
 
     def test_black_removal_keeps_bright_letter_details(self):
         img = Image.new("RGBA", (32, 32), (0, 0, 0, 255))
@@ -145,6 +147,7 @@ class ImageProcessingTests(unittest.TestCase):
             despeckle_area=1,
             edge_contract=0,
             black_threshold=24,
+            black_level="normal",
             color_tolerance=42,
             protect_details=True,
             max_ai_side=1200,
@@ -167,6 +170,16 @@ class ImageProcessingTests(unittest.TestCase):
     def test_detection_value_handles_legacy_payloads(self):
         self.assertEqual("-", detection_value({}, "dominant_color"))
         self.assertEqual(0, detection_value({"background_uniformity": None}, "background_uniformity", 0))
+
+    def test_export_zip_contains_required_names_and_metadata(self):
+        img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+        package = build_export_package(img, dpi=300, mode="dtf_ready", original=img, processing_seconds=1.2)
+
+        with ZipFile(BytesIO(package["zip"])) as zf:
+            names = set(zf.namelist())
+            self.assertTrue({"original.png", "procesado.png", "procesado.pdf", "metadata.json"}.issubset(names))
+            metadata = json.loads(zf.read("metadata.json"))
+            self.assertEqual("dtf_ready", metadata["modo"])
 
 
 if __name__ == "__main__":

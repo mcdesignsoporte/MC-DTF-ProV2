@@ -8,13 +8,14 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 - Spanish commercial workflow modes: Fotografia, PNG Transparente, Conservar Diseno, Quitar Fondo Negro, Diseno Oscuro, and Preparar DTF.
 - Automatic background removal for black, white, gray, green, blue, red, yellow, purple, dominant colors, mild gradients, and moderately noisy backgrounds.
 - Detection metrics for resolution, transparency, background, black percentage, text, logo, noise, splash, and shadow signals.
+- Confidence score for the recommended mode.
 - Automatic recommendation for the safest processing mode.
 - AI background removal only for photographs.
 - OpenCV black background removal with protection for letters, logos, splashes, smoke, thin contours, outlines, and shadows.
-- Commercial previews: Transparent, Black shirt, White shirt, Sticker, Mug, Beer mug, and Hoodie.
-- Before/After QA view and alpha-change inspection.
-- PNG, PDF, and ZIP export at 300 DPI with PNG metadata.
-- Multiple-image batch processing with status table, timing, detection, and batch ZIP export.
+- Vistas previas comerciales: Transparente, Playera negra, Playera blanca, Sticker, Taza, Tarro y Sudadera.
+- Vista Antes/Despues e inspeccion de cambios de transparencia.
+- PNG, PDF, and ZIP export at 300 DPI with `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.
+- Multiple-image batch processing with detector-selected mode per image.
 - Advanced Settings hidden by default.
 - Tests for alpha handling, black removal, export, and transparent PNG detection.
 
