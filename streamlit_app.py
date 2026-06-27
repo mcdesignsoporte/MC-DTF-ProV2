@@ -15,6 +15,7 @@ from core.presets import PRESETS
 from core.preview import composite_preview
 from core.resize import fit_to_print_size, upscale_and_sharpen
 
+
 st.set_page_config(page_title="MC DTF Pro", page_icon="🎨", layout="wide")
 
 st.markdown("""
@@ -22,6 +23,14 @@ st.markdown("""
 .block-container {padding-top: 2rem;}
 .mc-title {font-size: 3rem; font-weight: 900; margin-bottom: 0;}
 .mc-tag {color:#d9aa32; text-transform: uppercase; letter-spacing: .18rem; font-weight: 800;}
+.mc-warning {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #fff4d6;
+    color: #5c4200;
+    border: 1px solid #e0b94f;
+    font-weight: 600;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -29,9 +38,11 @@ st.markdown('<div class="mc-tag">MC Creative Studio</div>', unsafe_allow_html=Tr
 st.markdown('<h1 class="mc-title">MC DTF Pro v2</h1>', unsafe_allow_html=True)
 st.caption("Quita fondo, limpia semitransparencias, elimina pixeles basura y exporta archivos para DTF.")
 
+
 @st.cache_resource(show_spinner="Cargando modelo IA de fondo...")
 def cached_session():
     return get_rembg_session()
+
 
 with st.sidebar:
     st.header("Ajustes")
@@ -39,32 +50,95 @@ with st.sidebar:
     preset_name = st.selectbox("Preset", list(PRESETS.keys()), index=0)
     preset = PRESETS[preset_name]
 
-    use_ai = st.checkbox("Quitar fondo con IA", value=True)
-    skip_if_transparent = st.checkbox("Saltar IA si ya tiene transparencia", value=True)
-    trim = st.checkbox("Recortar espacio transparente", value=True)
+    preset_force_no_ai = preset_name == "Conservar diseño completo"
+
+    if preset_force_no_ai:
+        st.warning(
+            "Modo diseño completo: la IA está desactivada para conservar letras, fondos, splash, sombras y efectos."
+        )
+        use_ai = False
+    else:
+        use_ai = st.checkbox(
+            "Quitar fondo con IA",
+            value=preset.get("use_ai", True)
+        )
+
+    skip_if_transparent = st.checkbox(
+        "Saltar IA si ya tiene transparencia",
+        value=preset.get("skip_if_transparent", True)
+    )
+
+    trim = st.checkbox(
+        "Recortar espacio transparente",
+        value=preset.get("trim", True)
+    )
 
     st.subheader("Limpieza")
-    alpha_cut = st.slider("Corte de transparencia", 1, 254, int(preset.get("alpha_cut", 70)))
-    despeckle_area = st.slider("Quitar basura menor a", 1, 500, int(preset.get("despeckle_area", 2)))
-    edge_contract = st.slider("Contraer borde", 0, 4, int(preset.get("edge_contract", 0)))
+    alpha_cut = st.slider(
+        "Corte de transparencia",
+        1,
+        254,
+        int(preset.get("alpha_cut", 70))
+    )
+
+    despeckle_area = st.slider(
+        "Quitar basura menor a",
+        1,
+        500,
+        int(preset.get("despeckle_area", 2))
+    )
+
+    edge_contract = st.slider(
+        "Contraer borde",
+        0,
+        4,
+        int(preset.get("edge_contract", 0))
+    )
 
     st.subheader("Tamaño")
-    max_ai_side = st.slider("Tamaño máximo para IA", 800, 2400, int(preset.get("max_ai_side", 1600)), step=100)
+    max_ai_side = st.slider(
+        "Tamaño máximo para IA",
+        800,
+        2400,
+        int(preset.get("max_ai_side", 1600)),
+        step=100
+    )
+
     upscale = st.selectbox(
         "Alta resolución",
         [1, 2, 3, 4],
         index=0,
         format_func=lambda x: "Original" if x == 1 else f"{x}x",
     )
-    dpi = st.number_input("DPI", min_value=72, max_value=600, value=300, step=1)
-    width_cm = st.number_input("Ancho final cm (opcional)", min_value=0.0, value=0.0, step=0.5)
-    height_cm = st.number_input("Alto final cm (opcional)", min_value=0.0, value=0.0, step=0.5)
+
+    dpi = st.number_input(
+        "DPI",
+        min_value=72,
+        max_value=600,
+        value=300,
+        step=1
+    )
+
+    width_cm = st.number_input(
+        "Ancho final cm (opcional)",
+        min_value=0.0,
+        value=0.0,
+        step=0.5
+    )
+
+    height_cm = st.number_input(
+        "Alto final cm (opcional)",
+        min_value=0.0,
+        value=0.0,
+        step=0.5
+    )
 
     st.subheader("Semitono")
     make_ht = st.checkbox("Crear semitono", value=False)
     dot_size = st.slider("Tamaño de punto", 4, 40, 8)
     angle = st.slider("Ángulo", 0, 90, 15)
     invert_ht = st.checkbox("Invertir semitono", value=False)
+
 
 uploaded = st.file_uploader(
     "Sube una imagen",
@@ -81,6 +155,7 @@ except Exception as exc:
     st.error(f"No se pudo abrir la imagen: {exc}")
     st.stop()
 
+
 col1, col2 = st.columns(2)
 
 with col1:
@@ -90,7 +165,11 @@ with col1:
 
 with col2:
     st.subheader("Estado")
-    st.info("Lista para procesar.")
+    if preset_force_no_ai:
+        st.info("Modo diseño completo activo: no se eliminarán letras ni efectos con IA.")
+    else:
+        st.info("Lista para procesar.")
+
 
 if st.button("Procesar imagen", type="primary", use_container_width=True):
     progress = st.progress(0)
@@ -104,14 +183,11 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
 
         if use_ai and not (skip_if_transparent and has_transparency(work)):
             log.write("2/6 Quitando fondo con IA...")
-
-            # CORRECCIÓN: la función usa max_side, no max_ai_side.
             ai_img = resize_for_ai(work, max_side=max_ai_side)
-
             session = cached_session()
             work = remove_background_ai(ai_img, session=session)
         else:
-            log.write("2/6 IA saltada...")
+            log.write("2/6 IA saltada para conservar diseño o porque ya existe transparencia.")
 
         progress.progress(35)
 
@@ -177,6 +253,7 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
 
     except Exception as exc:
         log.error(f"Error al procesar: {exc}")
+
 
 if "result_img" in st.session_state:
     st.divider()
