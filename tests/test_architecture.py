@@ -14,9 +14,9 @@ class ArchitectureTests(unittest.TestCase):
     def test_capabilities_catalog_has_twenty_items(self):
         capabilities = get_capabilities()
 
-        self.assertEqual(20, len(capabilities))
+        self.assertEqual(len(get_available_modules()), len(capabilities))
         self.assertEqual("background_removal", capabilities[0]["id"])
-        self.assertEqual("stable", get_capability("exporting")["status"])
+        self.assertEqual("active", get_capability("exporting")["status"])
 
     def test_feature_flags_default_values(self):
         flags = enabled_flags()

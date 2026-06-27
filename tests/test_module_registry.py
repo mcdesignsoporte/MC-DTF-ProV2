@@ -22,9 +22,11 @@ class ModuleRegistryTests(unittest.TestCase):
                 self.assertIsInstance(module["id"], str)
                 self.assertIsInstance(module["name"], str)
                 self.assertIsInstance(module["description"], str)
+                self.assertIsInstance(module["category"], str)
                 self.assertIn(module["status"], VALID_STATUSES)
                 self.assertTrue(module["name"])
                 self.assertTrue(module["description"])
+                self.assertTrue(module["category"])
 
     def test_active_modules_have_functionality_evidence(self) -> None:
         for module in get_active_modules():
