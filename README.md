@@ -18,6 +18,8 @@ Professional Streamlit software for preparing DTF artwork. The app is designed f
 - Informacion tecnica de impresion: pixeles, centimetros, DPI, modo PNG, transparencia, peso y estado DTF.
 - Calidad DTF con checks de fondo, bordes, resolucion, alfa limpio y tamano de impresion.
 - Histograma alfa con porcentajes transparente, solido y semitransparente.
+- Centro Profesional con capacidades, modulos activos, feature flags y roadmap.
+- Arquitectura modular preparada para DTF, sublimacion, DTF UV, mockups, lote, vectorizacion, negocio y automatizacion.
 - PNG, PDF, and ZIP export at 300 DPI with `original.png`, `procesado.png`, `procesado.pdf`, and `metadata.json`.
 - Multiple-image batch processing with detector-selected mode per image.
 - Advanced Settings hidden by default.
@@ -49,8 +51,12 @@ MIGRATION.md
 .streamlit/config.toml
 assets/styles.css
 core/
+features/
+services/
+models/
 ui/
 tests/
+docs/
 ```
 
 ## Core Modules
@@ -66,6 +72,11 @@ tests/
 - `core/presets.py`: exposes stable presets for future integrations.
 - `core/preview.py`: creates fast auto-fit preview composites without changing export resolution.
 - `core/quality.py`: evaluates DTF readiness and alpha-channel quality.
+- `core/capabilities.py`: professional capability catalog.
+- `core/module_registry.py`: active module registry and phase lookup.
+- `core/feature_flags.py`: optional feature flags.
+- `core/non_destructive.py`: stable API for the non-destructive engine.
+- `core/quality_report.py`: production QA report.
 
 ## Verify
 

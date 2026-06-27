@@ -98,3 +98,12 @@
 - Added automatic art-loss risk detection and restoration metadata.
 - Added QA tabs for Fondo eliminado, Arte protegido, Detalles protegidos, and Riesgo de perdida.
 - Added tests for pink car body, wheels, white letters, nearby splashes, isolated noise, and edge-connected background.
+
+## Arquitectura Modular Profesional
+
+- Added modular feature architecture under `features/` for 20 product areas.
+- Added capability catalog, module registry, and feature flags.
+- Added professional roadmap in `docs/ROADMAP.md`.
+- Added `core/non_destructive.py` compatibility API and `core/quality_report.py`.
+- Added Centro Profesional UI with capabilities, active modules, roadmap status, version, and engine state.
+- Added architecture tests for capabilities, module registry, feature flags, non-destructive wrappers, and quality report.

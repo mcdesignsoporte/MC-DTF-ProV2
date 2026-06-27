@@ -3,6 +3,7 @@ from PIL import Image
 
 from core.preview import VIEWPORT, alpha_preview, before_after_preview, composite_preview, preview_thumbnail
 from core.quality import evaluate_dtf_quality
+from core.quality_report import quality_report
 from core.white_protection import mask_preview
 from ui.quality import render_quality
 
@@ -42,6 +43,7 @@ def render_result_workspace(
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
+    production_report = quality_report(original, result, artwork_mask, background_mask, risk)
     background = st.selectbox("Fondo de vista", BACKGROUNDS, index=0)
     tabs = st.tabs(["Resultado final", "Antes / Despues", "Alpha", "Fondo eliminado", "Arte protegido", "Detalles protegidos", "Riesgo de perdida", "Original"])
 
@@ -68,6 +70,7 @@ def render_result_workspace(
         render_white_stats(white_stats)
         render_fine_detail_stats(fine_stats)
         render_non_destructive_stats(non_destructive_stats)
+        render_quality_report(production_report)
     with right:
         render_quality(report)
         st.success("Modo seguro activo")
@@ -180,3 +183,14 @@ def render_non_destructive_stats(stats: dict[str, object] | None) -> None:
     st.metric("Fondo confirmado eliminado", str(stats.get("background_removed", 0)))
     st.metric("Arte protegido", str(stats.get("artwork_protected", 0)))
     st.metric("Pixeles restaurados", str(stats.get("restored_pixels", 0)))
+
+
+def render_quality_report(report: dict[str, object]) -> None:
+    """Render professional quality report metrics."""
+    st.subheader("Reporte de calidad")
+    st.metric("Score", f"{report.get('score', 0)}%")
+    st.metric("Fondo eliminado", f"{report.get('removed_background_percent', 0)}%")
+    st.metric("Arte protegido", f"{report.get('protected_art_percent', 0)}%")
+    st.metric("Riesgo", str(report.get("risk_level", "bajo")))
+    for warning in report.get("warnings", []):
+        st.warning(str(warning))

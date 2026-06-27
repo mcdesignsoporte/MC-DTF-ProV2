@@ -1,0 +1,1 @@
+﻿"""object removal feature package."""

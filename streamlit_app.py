@@ -20,6 +20,7 @@ from ui.batch import render_batch_table
 from ui.detection import detection_value
 from ui.downloads import render_downloads
 from ui.preview import render_input_summary, render_result_workspace
+from ui.professional_center import render_professional_center
 from ui.sidebar import render_sidebar
 
 APP_VERSION = f"V{VERSION}"
@@ -32,6 +33,7 @@ st.markdown(f"<style>{Path('assets/styles.css').read_text(encoding='utf-8')}</st
 st.markdown(f'<div class="mc-tag">{AUTHOR}</div>', unsafe_allow_html=True)
 st.markdown(f'<h1 class="mc-title">{NAME} {APP_VERSION}</h1>', unsafe_allow_html=True)
 st.caption("Software profesional DTF con deteccion automatica, modos inteligentes, previews comerciales y exportacion PNG/PDF/ZIP.")
+render_professional_center()
 
 
 @st.cache_resource(show_spinner="Cargando modelo IA de fondo...")
