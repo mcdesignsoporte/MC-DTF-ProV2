@@ -33,5 +33,9 @@ def make_halftone(img: Image.Image, dot_size: int = 8, angle: int = 15, invert: 
     black = Image.new("RGBA", rgba.size, (0, 0, 0, 255))
     transparent = Image.new("RGBA", rgba.size, (0, 0, 0, 0))
     result = Image.composite(black, transparent, ImageOps.invert(mask_img))
-    result.putalpha(Image.fromarray(np.where(alpha > 0, 255, 0).astype(np.uint8)))
+
+    dot_alpha = np.array(result.getchannel("A"), dtype=np.uint16)
+    source_alpha = alpha.astype(np.uint16)
+    combined_alpha = ((dot_alpha * source_alpha) // 255).astype(np.uint8)
+    result.putalpha(Image.fromarray(combined_alpha, "L"))
     return result
