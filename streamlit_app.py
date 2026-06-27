@@ -203,15 +203,13 @@ if "batch_rows" in st.session_state:
 if "result_img" in st.session_state:
     st.divider()
     st.subheader("Resultado")
-    col_a, col_b = st.columns([2, 1])
-    with col_a:
-        render_result_workspace(
-            st.session_state["original_img"],
-            st.session_state["result_img"],
-            options.dpi,
-            st.session_state["result_png"],
-        )
-    with col_b:
+    render_result_workspace(
+        st.session_state["original_img"],
+        st.session_state["result_img"],
+        options.dpi,
+        st.session_state["result_png"],
+    )
+    with st.expander("Descargas", expanded=True):
         render_downloads(
             st.session_state["result_img"],
             st.session_state["result_png"],

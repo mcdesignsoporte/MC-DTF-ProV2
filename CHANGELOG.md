@@ -64,3 +64,8 @@
 - Added DTF quality scoring with checks for background removal, clean edges, resolution, alpha cleanliness, and print size.
 - Added alpha histogram metrics for transparent, solid, and semi-transparent pixels.
 - Added tests for preview thumbnail fitting, fast checkerboard generation, alpha preview, alpha histogram, and quality scoring.
+
+## V4.2.1
+
+- Fixed Streamlit Cloud nested column rendering in the professional result viewer.
+- Moved downloads into a result expander and simplified technical/quality metrics for Streamlit 1.41 compatibility.

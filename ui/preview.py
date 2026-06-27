@@ -54,15 +54,12 @@ def render_technical_info(img: Image.Image, dpi: int, png_bytes: bytes, status: 
     height_cm = rgba.height / dpi * 2.54
     has_alpha = rgba.getextrema()[3][0] < 255
     st.subheader("Informacion tecnica")
-    c1, c2 = st.columns(2)
-    c1.metric("Tamano", f"{rgba.width} x {rgba.height} px")
-    c2.metric("Impresion", f"{width_cm:.1f} x {height_cm:.1f} cm")
-    c3, c4 = st.columns(2)
-    c3.metric("DPI", str(dpi))
-    c4.metric("Formato", "PNG RGBA")
-    c5, c6 = st.columns(2)
-    c5.metric("Transparencia", "Si" if has_alpha else "No")
-    c6.metric("Peso PNG", _format_size(len(png_bytes)))
+    st.metric("Tamano", f"{rgba.width} x {rgba.height} px")
+    st.metric("Impresion", f"{width_cm:.1f} x {height_cm:.1f} cm")
+    st.metric("DPI", str(dpi))
+    st.metric("Formato", "PNG RGBA")
+    st.metric("Transparencia", "Si" if has_alpha else "No")
+    st.metric("Peso PNG", _format_size(len(png_bytes)))
     st.success(f"Estado DTF: {status}")
 
 
