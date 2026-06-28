@@ -9,6 +9,7 @@ from PIL import Image
 from core.background_remove import edge_light_residue_score
 from core.detector import detect
 from core.residue_refine import ResidueRefineSettings, detect_light_residue_components
+from core.residue_refine import InternalLightResidueSettings, detect_internal_light_residue_components
 
 
 @dataclass(frozen=True)
@@ -57,11 +58,18 @@ def autopilot_quality_check(image: Image.Image) -> dict[str, object]:
         ResidueRefineSettings(luminosity_threshold=218, saturation_threshold=58, min_area=6, max_area=200000),
     )
     residue_count = sum(1 for item in residue_components if item.classification in {"borrar", "ambiguo"})
+    internal_components = detect_internal_light_residue_components(
+        rgba,
+        InternalLightResidueSettings(min_area=4, max_area=900, dark_neighbor_threshold=30),
+    )
+    internal_count = sum(1 for item in internal_components if item.suggested_action in {"borrar", "revisar"})
+    internal_area = sum(item.area for item in internal_components if item.suggested_action in {"borrar", "revisar"})
+    internal_score = min(100, internal_count * 18 + int(internal_area / max(1, alpha.size) * 5000))
     halo = edge_light_residue_score(rgba)
     transparent = round(float(np.count_nonzero(alpha <= 5) / alpha.size * 100), 2)
     small_components = _small_alpha_components(alpha)
-    high_risk = halo > 18 or residue_count > 0 or small_components > 24
-    medium_risk = halo > 7 or small_components > 8 or transparent < 1
+    high_risk = halo > 18 or residue_count > 0 or small_components > 24 or internal_score >= 35
+    medium_risk = halo > 7 or small_components > 8 or transparent < 1 or internal_score >= 16
     traffic = "red" if high_risk else "yellow" if medium_risk else "green"
     return {
         "traffic_light": traffic,
@@ -69,9 +77,12 @@ def autopilot_quality_check(image: Image.Image) -> dict[str, object]:
         "opaque_light_residue_components": int(residue_count),
         "transparency_percent": transparent,
         "small_components": int(small_components),
+        "internal_light_residue_score": int(internal_score),
+        "internal_light_residue_components": int(internal_count),
+        "internal_light_residue_area": int(internal_area),
         "risk_level": "alto" if traffic == "red" else "medio" if traffic == "yellow" else "bajo",
         "needs_manual_review": traffic != "green",
-        "suggested_next_step": "Usar refinamiento asistido" if traffic == "red" else "Revisar sobre fondo negro" if traffic == "yellow" else "Exportar",
+        "suggested_next_step": _qa_next_step(traffic, internal_score),
     }
 
 
@@ -215,3 +226,13 @@ def _small_alpha_components(alpha: np.ndarray) -> int:
         if 1 <= area <= 16:
             count += 1
     return count
+
+
+def _qa_next_step(traffic: str, internal_score: int) -> str:
+    if internal_score >= 16:
+        return "Refinar residuos blancos internos"
+    if traffic == "red":
+        return "Usar refinamiento asistido"
+    if traffic == "yellow":
+        return "Revisar sobre fondo negro"
+    return "Exportar"

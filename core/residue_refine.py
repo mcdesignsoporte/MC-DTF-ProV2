@@ -43,6 +43,38 @@ class ResidueComponent:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class InternalLightResidueSettings:
+    """Controls for trapped white residue inside dark grunge or linework."""
+
+    min_area: int = 4
+    max_area: int = 900
+    dark_neighbor_threshold: int = 34
+    luminosity_threshold: int = 218
+    saturation_threshold: int = 58
+    auto_remove_high_confidence: bool = False
+    manual_remove_ids: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class InternalLightResidueComponent:
+    """Measured internal light component and its suggested cleanup action."""
+
+    id: int
+    area: int
+    bbox: tuple[int, int, int, int]
+    mean_luminosity: float
+    mean_saturation: float
+    distance_to_transparency: float
+    dark_neighbor_percent: float
+    transparency_border_percent: float
+    residue_score: int
+    suggested_action: str
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
 def detect_light_residue_components(
     image: Image.Image,
     settings: ResidueRefineSettings | None = None,
@@ -120,6 +152,155 @@ def residue_component_report_json(components: list[ResidueComponent]) -> bytes:
     """Serialize residue component measurements for ZIP debug export."""
     data = [component.to_dict() for component in components]
     return json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+
+
+def detect_internal_light_residue_components(
+    image: Image.Image,
+    settings: InternalLightResidueSettings | None = None,
+) -> list[InternalLightResidueComponent]:
+    """Detect trapped white residue surrounded by dark internal artwork."""
+    options = settings or InternalLightResidueSettings()
+    arr = np.array(image.convert("RGBA"))
+    light = _internal_light_mask(arr, options)
+    light &= _size_window_mask(light, options.min_area, options.max_area)
+    labels, count = build_residue_component_map(light)
+    if count == 0:
+        return []
+    gray = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2GRAY)
+    sat = cv2.cvtColor(arr[:, :, :3], cv2.COLOR_RGB2HSV)[:, :, 1]
+    alpha = arr[:, :, 3]
+    transparent = alpha <= 20
+    distance = cv2.distanceTransform((~transparent).astype(np.uint8), cv2.DIST_L2, 3)
+    components: list[InternalLightResidueComponent] = []
+    for component_id in range(1, count + 1):
+        mask = labels == component_id
+        if not mask.any():
+            continue
+        ring = _component_ring(mask, radius=5)
+        wide_ring = _component_ring(mask, radius=16)
+        visible_ring = ring & (alpha > 20)
+        visible_wide_ring = wide_ring & (alpha > 20)
+        dark_percent = _percent_in_mask((gray < 72) & visible_ring, visible_ring)
+        transparent_percent = _percent_in_mask(transparent & ring, ring)
+        color_percent = _percent_in_mask(_colored_neighbor_mask(arr) & visible_wide_ring, visible_wide_ring)
+        luma = float(np.mean(gray[mask]))
+        saturation = float(np.mean(sat[mask]))
+        dist = float(np.min(distance[mask]))
+        area = int(mask.sum())
+        score = score_light_residue_component(
+            area=area,
+            mean_luminosity=luma,
+            mean_saturation=saturation,
+            distance_to_transparency=dist,
+            dark_neighbor_percent=dark_percent,
+            transparency_border_percent=transparent_percent,
+            colored_neighbor_percent=color_percent,
+            settings=options,
+        )
+        components.append(InternalLightResidueComponent(
+            id=component_id,
+            area=area,
+            bbox=_bbox(mask),
+            mean_luminosity=round(luma, 2),
+            mean_saturation=round(saturation, 2),
+            distance_to_transparency=round(dist, 2),
+            dark_neighbor_percent=round(dark_percent, 2),
+            transparency_border_percent=round(transparent_percent, 2),
+            residue_score=score,
+            suggested_action=_internal_action(score, area, dark_percent, color_percent, options),
+        ))
+    return components
+
+
+def score_light_residue_component(
+    area: int,
+    mean_luminosity: float,
+    mean_saturation: float,
+    distance_to_transparency: float,
+    dark_neighbor_percent: float,
+    transparency_border_percent: float,
+    colored_neighbor_percent: float = 0,
+    settings: InternalLightResidueSettings | None = None,
+) -> int:
+    """Score whether a light component is trapped residue, not intentional white art."""
+    options = settings or InternalLightResidueSettings()
+    score = 0
+    score += min(24, max(0, int((mean_luminosity - options.luminosity_threshold) / 1.4)))
+    score += min(18, max(0, int((options.saturation_threshold - mean_saturation) / 3)))
+    score += min(36, int(dark_neighbor_percent * 0.55))
+    score += 12 if options.min_area <= area <= min(options.max_area, 260) else 0
+    score += 8 if distance_to_transparency >= 4 else 0
+    score -= min(28, int(colored_neighbor_percent * 0.5))
+    score -= 18 if area > options.max_area * 0.65 else 0
+    score -= 10 if transparency_border_percent > 20 else 0
+    return max(0, min(100, score))
+
+
+def remove_selected_light_residue_components(
+    image: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings | None = None,
+) -> Image.Image:
+    """Remove high-confidence or manually selected internal residue components."""
+    options = settings or InternalLightResidueSettings()
+    remove_ids = _internal_removable_ids(components, options)
+    if not remove_ids:
+        return image.convert("RGBA")
+    arr = np.array(image.convert("RGBA"))
+    labels, _ = build_residue_component_map(_internal_light_mask(arr, options))
+    out = arr.copy()
+    out[np.isin(labels, list(remove_ids)), 3] = 0
+    return Image.fromarray(out, "RGBA")
+
+
+def build_light_residue_overlay(
+    image: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings | None = None,
+) -> Image.Image:
+    """Build a black-background overlay for internal light residue components."""
+    options = settings or InternalLightResidueSettings()
+    base = compose_on_solid(image, (0, 0, 0)).convert("RGBA")
+    labels, _ = build_residue_component_map(_internal_light_mask(np.array(image.convert("RGBA")), options))
+    overlay = np.zeros((base.height, base.width, 4), dtype=np.uint8)
+    for component in components:
+        color = (240, 40, 40, 190)
+        if component.suggested_action == "revisar":
+            color = (255, 210, 30, 170)
+        if component.suggested_action == "conservar":
+            color = (0, 220, 120, 150)
+        overlay[labels == component.id] = color
+    base.alpha_composite(Image.fromarray(overlay, "RGBA"))
+    draw = ImageDraw.Draw(base)
+    for component in components[:80]:
+        x1, y1, _, _ = component.bbox
+        draw.text((x1 + 1, y1 + 1), str(component.id), fill=(255, 255, 255, 255))
+    return base
+
+
+def build_internal_residue_debug(
+    source: Image.Image,
+    refined: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings,
+) -> dict[str, object]:
+    """Build previews and report for trapped internal white residue cleanup."""
+    return {
+        "components": [component.to_dict() for component in components],
+        "stats": {
+            "internal_components_detected": len(components),
+            "internal_components_removed": len(_internal_removable_ids(components, settings)),
+            "internal_residue_area": sum(item.area for item in components if item.suggested_action in {"borrar", "revisar"}),
+            "internal_high_confidence": sum(1 for item in components if item.suggested_action == "borrar"),
+        },
+        "previews": {
+            "internal_residue_mask": _internal_component_mask(source, components, settings),
+            "internal_residue_overlay": build_light_residue_overlay(source, components, settings),
+            "preview_green": compose_on_solid(refined, (0, 150, 80)),
+            "preview_black": compose_on_solid(refined, (0, 0, 0)),
+        },
+        "report_json": json.dumps([component.to_dict() for component in components], indent=2, ensure_ascii=False).encode("utf-8"),
+    }
 
 
 def build_residue_debug(
@@ -275,3 +456,86 @@ def _component_mask_preview(
 
 def _kernel(size: int) -> np.ndarray:
     return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+
+
+def _internal_light_mask(arr: np.ndarray, settings: InternalLightResidueSettings) -> np.ndarray:
+    rgb = arr[:, :, :3]
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    sat = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, :, 1]
+    alpha = arr[:, :, 3]
+    return (alpha > 220) & (gray >= settings.luminosity_threshold) & (sat <= settings.saturation_threshold)
+
+
+def _component_ring(mask: np.ndarray, radius: int) -> np.ndarray:
+    kernel = _kernel(radius * 2 + 1)
+    dilated = cv2.dilate(mask.astype(np.uint8), kernel, iterations=1).astype(bool)
+    return dilated & ~mask
+
+
+def _percent_in_mask(candidate: np.ndarray, mask: np.ndarray) -> float:
+    total = int(np.count_nonzero(mask))
+    if total == 0:
+        return 0.0
+    return float(np.count_nonzero(candidate & mask) / total * 100)
+
+
+def _colored_neighbor_mask(arr: np.ndarray) -> np.ndarray:
+    rgb = arr[:, :, :3]
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+    alpha = arr[:, :, 3]
+    red = rgb[:, :, 0].astype(np.int16)
+    green = rgb[:, :, 1].astype(np.int16)
+    blue = rgb[:, :, 2].astype(np.int16)
+    warm = (red > 120) & (red > green + 30) & (red > blue + 10)
+    cool = (blue > 110) & (blue > red + 20)
+    saturated = hsv[:, :, 1] > 55
+    return (alpha > 20) & saturated & (warm | cool)
+
+
+def _bbox(mask: np.ndarray) -> tuple[int, int, int, int]:
+    ys, xs = np.where(mask)
+    return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+
+
+def _internal_action(
+    score: int,
+    area: int,
+    dark_percent: float,
+    color_percent: float,
+    settings: InternalLightResidueSettings,
+) -> str:
+    if area > settings.max_area * 0.65 or color_percent >= 34:
+        return "conservar"
+    if score >= 72 and dark_percent >= settings.dark_neighbor_threshold:
+        return "borrar"
+    if score >= 50 and dark_percent >= max(18, settings.dark_neighbor_threshold * 0.65):
+        return "revisar"
+    return "conservar"
+
+
+def _internal_removable_ids(
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings,
+) -> set[int]:
+    manual = set(settings.manual_remove_ids)
+    selected = set(manual)
+    if settings.auto_remove_high_confidence:
+        selected.update(item.id for item in components if item.suggested_action == "borrar")
+    return selected
+
+
+def _internal_component_mask(
+    image: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings,
+) -> Image.Image:
+    labels, _ = build_residue_component_map(_internal_light_mask(np.array(image.convert("RGBA")), settings))
+    out = np.zeros((labels.shape[0], labels.shape[1], 4), dtype=np.uint8)
+    for component in components:
+        color = (240, 40, 40, 230)
+        if component.suggested_action == "revisar":
+            color = (255, 210, 30, 210)
+        if component.suggested_action == "conservar":
+            color = (0, 220, 120, 180)
+        out[labels == component.id] = color
+    return Image.fromarray(out, "RGBA")

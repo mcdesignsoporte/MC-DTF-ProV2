@@ -101,6 +101,14 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         residue_remove_small=options.residue_remove_small,
         residue_preserve_internal=options.residue_preserve_internal,
         residue_manual_ids=options.residue_manual_ids,
+        internal_residue_enabled=options.internal_residue_enabled,
+        internal_residue_min_area=options.internal_residue_min_area,
+        internal_residue_max_area=options.internal_residue_max_area,
+        internal_residue_dark_sensitivity=options.internal_residue_dark_sensitivity,
+        internal_residue_luminosity=options.internal_residue_luminosity,
+        internal_residue_saturation=options.internal_residue_saturation,
+        internal_residue_auto_remove=options.internal_residue_auto_remove,
+        internal_residue_manual_ids=options.internal_residue_manual_ids,
     )
 
 

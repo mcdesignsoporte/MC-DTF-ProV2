@@ -28,10 +28,14 @@ from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
 from core.residue_refine import (
+    InternalLightResidueSettings,
     ResidueRefineSettings,
     apply_residue_component_removal,
+    build_internal_residue_debug,
     build_residue_debug,
     detect_light_residue_components,
+    detect_internal_light_residue_components,
+    remove_selected_light_residue_components,
 )
 from core.white_protection import protect_white_regions
 from core.white_complex import ComplexWhiteSettings, debug_previews, remove_complex_white_background
@@ -100,6 +104,14 @@ class PipelineSettings:
     residue_remove_small: bool = False
     residue_preserve_internal: bool = True
     residue_manual_ids: tuple[int, ...] = ()
+    internal_residue_enabled: bool = False
+    internal_residue_min_area: int = 4
+    internal_residue_max_area: int = 900
+    internal_residue_dark_sensitivity: int = 34
+    internal_residue_luminosity: int = 218
+    internal_residue_saturation: int = 58
+    internal_residue_auto_remove: bool = False
+    internal_residue_manual_ids: tuple[int, ...] = ()
 
 
 def process_artwork(
@@ -127,6 +139,7 @@ def process_artwork(
     logo_report: dict[str, object] | None = None
     logo_layers: dict[str, object] | None = None
     complex_debug: dict[str, object] | None = None
+    internal_settings: InternalLightResidueSettings | None = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
@@ -165,6 +178,16 @@ def process_artwork(
             components = detect_light_residue_components(residue_source, residue_settings)
             work = apply_residue_component_removal(residue_source, components, residue_settings)
             complex_debug["residue"] = build_residue_debug(residue_source, work, components, residue_settings)
+        if settings.internal_residue_enabled:
+            internal_settings = InternalLightResidueSettings(
+                min_area=settings.internal_residue_min_area,
+                max_area=settings.internal_residue_max_area,
+                dark_neighbor_threshold=settings.internal_residue_dark_sensitivity,
+                luminosity_threshold=settings.internal_residue_luminosity,
+                saturation_threshold=settings.internal_residue_saturation,
+                auto_remove_high_confidence=settings.internal_residue_auto_remove,
+                manual_remove_ids=settings.internal_residue_manual_ids,
+            )
     elif (settings.use_ai or auto_photo) and (should_use_ai(effective_detection, "photograph") or auto_photo) and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
@@ -188,6 +211,11 @@ def process_artwork(
     if settings.protect_white_details and not auto_photo:
         work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
         white_stats = stats.to_dict()
+    if internal_settings is not None and complex_debug is not None:
+        internal_source = work
+        internal_components = detect_internal_light_residue_components(internal_source, internal_settings)
+        work = remove_selected_light_residue_components(internal_source, internal_components, internal_settings)
+        complex_debug["internal_residue"] = build_internal_residue_debug(internal_source, work, internal_components, internal_settings)
     if settings.clean_enabled:
         work, stats, fine_mask = clean_alpha_with_stats(
             work,
@@ -418,6 +446,9 @@ def _complex_white_metadata_extra(debug: dict[str, object] | None) -> dict[str, 
     residue = dict(debug.get("residue") or {})
     residue_stats = dict(residue.get("stats") or {})
     values.update({f"residue_{key}": str(value) for key, value in residue_stats.items()})
+    internal = dict(debug.get("internal_residue") or {})
+    internal_stats = dict(internal.get("stats") or {})
+    values.update({f"internal_residue_{key}": str(value) for key, value in internal_stats.items()})
     return values
 
 
@@ -453,6 +484,20 @@ def _complex_white_extra_files(debug: dict[str, object] | None, settings: Pipeli
     report_json = residue.get("report_json")
     if isinstance(report_json, bytes):
         files["debug_component_report.json"] = report_json
+    internal = dict(debug.get("internal_residue") or {})
+    internal_previews = dict(internal.get("previews") or {})
+    internal_names = {
+        "internal_residue_mask": "debug_internal_light_residue_mask.png",
+        "internal_residue_overlay": "debug_internal_light_residue_overlay.png",
+        "preview_green": "debug_preview_green.png",
+    }
+    for key, filename in internal_names.items():
+        image = internal_previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
+    internal_report = internal.get("report_json")
+    if isinstance(internal_report, bytes):
+        files["debug_internal_residue_report.json"] = internal_report
     return files
 
 

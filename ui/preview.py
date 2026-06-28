@@ -349,6 +349,7 @@ def render_complex_white_debug(debug: dict[str, object] | None) -> None:
             st.caption(label)
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
     render_residue_debug(dict(debug.get("residue") or {}))
+    render_internal_residue_debug(dict(debug.get("internal_residue") or {}))
 
 
 def render_complex_white_stats(debug: dict[str, object] | None) -> None:
@@ -362,6 +363,7 @@ def render_complex_white_stats(debug: dict[str, object] | None) -> None:
     st.metric("Blancos opacos despues", str(stats.get("opaque_light_after", 0)))
     st.metric("Color fondo", str(stats.get("background_color", "-")))
     render_residue_stats(dict(debug.get("residue") or {}))
+    render_internal_residue_stats(dict(debug.get("internal_residue") or {}))
 
 
 def render_residue_debug(debug: dict[str, object]) -> None:
@@ -396,3 +398,37 @@ def render_residue_stats(debug: dict[str, object]) -> None:
     st.metric("Componentes eliminados", str(stats.get("components_removed", 0)))
     st.metric("Ambiguos conservados", str(stats.get("ambiguous_components", 0)))
     st.metric("Blancos internos conservados", str(stats.get("internal_components_preserved", 0)))
+
+
+def render_internal_residue_debug(debug: dict[str, object]) -> None:
+    """Render trapped internal light residue diagnostics."""
+    if not debug:
+        return
+    st.subheader("Residuos blancos internos")
+    previews = dict(debug.get("previews") or {})
+    labels = [
+        ("internal_residue_overlay", "Overlay de residuos internos"),
+        ("internal_residue_mask", "Mascara de residuos internos"),
+        ("preview_green", "Resultado sobre verde"),
+        ("preview_black", "Resultado sobre negro"),
+    ]
+    for key, label in labels:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+    components = list(debug.get("components") or [])
+    if components:
+        st.dataframe(components, use_container_width=True, hide_index=True)
+
+
+def render_internal_residue_stats(debug: dict[str, object]) -> None:
+    """Render trapped internal residue cleanup metrics."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Residuos blancos internos")
+    st.metric("Componentes detectados", str(stats.get("internal_components_detected", 0)))
+    st.metric("Componentes eliminados", str(stats.get("internal_components_removed", 0)))
+    st.metric("Area residual", str(stats.get("internal_residue_area", 0)))
+    st.metric("Alta confianza", str(stats.get("internal_high_confidence", 0)))

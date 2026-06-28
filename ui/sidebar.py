@@ -66,6 +66,14 @@ class ProcessingOptions:
     residue_remove_small: bool
     residue_preserve_internal: bool
     residue_manual_ids: tuple[int, ...]
+    internal_residue_enabled: bool
+    internal_residue_min_area: int
+    internal_residue_max_area: int
+    internal_residue_dark_sensitivity: int
+    internal_residue_luminosity: int
+    internal_residue_saturation: int
+    internal_residue_auto_remove: bool
+    internal_residue_manual_ids: tuple[int, ...]
     max_ai_side: int
     upscale: int
     dpi: int
@@ -294,6 +302,16 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         residue_preserve_internal = st.checkbox("Preservar blancos internos", value=True, key="residue_preserve_internal")
         residue_manual_text = st.text_input("IDs manuales a borrar", value="", placeholder="Ejemplo: 3, 7, 12")
 
+        st.subheader("Refinar residuos blancos internos")
+        internal_residue_enabled = st.checkbox("Activar refinamiento interno", value=False)
+        internal_residue_min_area = st.number_input("Residuo interno minimo px", min_value=1, max_value=2000, value=4, step=1)
+        internal_residue_max_area = st.number_input("Residuo interno maximo px", min_value=10, max_value=50000, value=900, step=10)
+        internal_residue_dark_sensitivity = st.slider("Sensibilidad de vecino oscuro", 10, 80, 34)
+        internal_residue_luminosity = st.slider("Luminosidad interna minima", 170, 255, 218)
+        internal_residue_saturation = st.slider("Saturacion interna maxima", 0, 120, 58)
+        internal_residue_auto_remove = st.checkbox("Borrar automaticamente alta confianza", value=False)
+        internal_residue_manual_text = st.text_input("IDs internos manuales a borrar", value="", placeholder="Ejemplo: 2, 5")
+
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
@@ -343,6 +361,14 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "residue_remove_small": residue_remove_small,
         "residue_preserve_internal": residue_preserve_internal,
         "residue_manual_ids": _parse_component_ids(residue_manual_text),
+        "internal_residue_enabled": internal_residue_enabled,
+        "internal_residue_min_area": internal_residue_min_area,
+        "internal_residue_max_area": internal_residue_max_area,
+        "internal_residue_dark_sensitivity": internal_residue_dark_sensitivity,
+        "internal_residue_luminosity": internal_residue_luminosity,
+        "internal_residue_saturation": internal_residue_saturation,
+        "internal_residue_auto_remove": internal_residue_auto_remove,
+        "internal_residue_manual_ids": _parse_component_ids(internal_residue_manual_text),
     }
 
 
@@ -437,6 +463,14 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         residue_remove_small=bool(controls["residue_remove_small"]),
         residue_preserve_internal=bool(controls["residue_preserve_internal"]),
         residue_manual_ids=tuple(controls["residue_manual_ids"]),
+        internal_residue_enabled=bool(controls["internal_residue_enabled"]),
+        internal_residue_min_area=int(controls["internal_residue_min_area"]),
+        internal_residue_max_area=int(controls["internal_residue_max_area"]),
+        internal_residue_dark_sensitivity=int(controls["internal_residue_dark_sensitivity"]),
+        internal_residue_luminosity=int(controls["internal_residue_luminosity"]),
+        internal_residue_saturation=int(controls["internal_residue_saturation"]),
+        internal_residue_auto_remove=bool(controls["internal_residue_auto_remove"]),
+        internal_residue_manual_ids=tuple(controls["internal_residue_manual_ids"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),
