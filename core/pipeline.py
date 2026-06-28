@@ -75,6 +75,7 @@ class PipelineSettings:
     dpi: int
     width_cm: float
     height_cm: float
+    complex_white_preset: str = "Balanceado"
     complex_white_tolerance: int = 58
     complex_white_luminosity: int = 224
     complex_white_saturation: int = 42

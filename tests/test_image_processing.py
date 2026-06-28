@@ -29,6 +29,7 @@ from core.quality import alpha_histogram, evaluate_dtf_quality
 from core.export import build_export_package
 from core.white_protection import build_protection_mask, protect_white_regions
 from core.white_complex import ComplexWhiteSettings, compose_on_solid, remove_complex_white_background
+from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
 from core.artwork_mask import build_artwork_mask
 from core.background_confirm import confirm_background_mask
 from core.non_destructive_clean import non_destructive_clean, estimate_art_loss_risk, restore_artwork_pixels
@@ -502,6 +503,22 @@ class ImageProcessingTests(unittest.TestCase):
             self.assertIn("debug_preview_black.png", names)
             self.assertIn("debug_preview_red.png", names)
 
+    def test_complex_white_presets_exist(self):
+        self.assertEqual({"Conservador", "Balanceado", "Agresivo DTF"}, set(COMPLEX_WHITE_PRESETS))
+
+    def test_complex_white_presets_generate_valid_settings(self):
+        for name in COMPLEX_WHITE_PRESETS:
+            settings = complex_white_preset(name)
+            self.assertIsInstance(settings, ComplexWhiteSettings)
+            self.assertGreaterEqual(settings.white_tolerance, 20)
+            self.assertLessEqual(settings.white_tolerance, 110)
+            self.assertGreaterEqual(settings.luminosity_threshold, 170)
+            self.assertLessEqual(settings.luminosity_threshold, 255)
+            self.assertGreaterEqual(settings.saturation_threshold, 0)
+            self.assertLessEqual(settings.saturation_threshold, 100)
+            self.assertIn(settings.mask_offset, {-2, -1, 0, 1, 2})
+            self.assertIn(settings.alpha_smoothing, {0, 1, 2})
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -787,6 +804,7 @@ def _auto_settings() -> PipelineSettings:
         dpi=300,
         width_cm=0,
         height_cm=0,
+        complex_white_preset="Balanceado",
     )
 
 
@@ -832,6 +850,7 @@ def _complex_pipeline_settings() -> PipelineSettings:
         dpi=300,
         width_cm=0,
         height_cm=0,
+        complex_white_preset="Balanceado",
         complex_white_tolerance=64,
         complex_white_luminosity=222,
         complex_white_saturation=48,

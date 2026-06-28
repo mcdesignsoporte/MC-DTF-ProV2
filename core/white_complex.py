@@ -35,6 +35,42 @@ class ComplexWhiteResult:
     stats: dict[str, object]
 
 
+COMPLEX_WHITE_PRESETS: dict[str, ComplexWhiteSettings] = {
+    "Conservador": ComplexWhiteSettings(
+        white_tolerance=48,
+        luminosity_threshold=232,
+        saturation_threshold=30,
+        preserve_internal_white=True,
+        halo_cleanup=True,
+        mask_offset=-1,
+        alpha_smoothing=1,
+    ),
+    "Balanceado": ComplexWhiteSettings(
+        white_tolerance=64,
+        luminosity_threshold=222,
+        saturation_threshold=48,
+        preserve_internal_white=True,
+        halo_cleanup=True,
+        mask_offset=0,
+        alpha_smoothing=1,
+    ),
+    "Agresivo DTF": ComplexWhiteSettings(
+        white_tolerance=82,
+        luminosity_threshold=206,
+        saturation_threshold=68,
+        preserve_internal_white=True,
+        halo_cleanup=True,
+        mask_offset=1,
+        alpha_smoothing=2,
+    ),
+}
+
+
+def complex_white_preset(name: str) -> ComplexWhiteSettings:
+    """Return a named complex-white preset, falling back to balanced settings."""
+    return COMPLEX_WHITE_PRESETS.get(name, COMPLEX_WHITE_PRESETS["Balanceado"])
+
+
 def remove_complex_white_background(
     image: Image.Image,
     settings: ComplexWhiteSettings | None = None,

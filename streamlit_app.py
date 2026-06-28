@@ -83,6 +83,7 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         dpi=options.dpi,
         width_cm=options.width_cm,
         height_cm=options.height_cm,
+        complex_white_preset=options.complex_white_preset,
         complex_white_tolerance=options.complex_white_tolerance,
         complex_white_luminosity=options.complex_white_luminosity,
         complex_white_saturation=options.complex_white_saturation,

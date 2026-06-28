@@ -6,6 +6,7 @@ import streamlit as st
 
 from core.constants import DEFAULT_DPI
 from core.modes import MODES
+from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class ProcessingOptions:
     logo_export_layers: bool
     logo_max_colors: int
     logo_color_tolerance: int
+    complex_white_preset: str
     complex_white_tolerance: int
     complex_white_luminosity: int
     complex_white_saturation: int
@@ -259,13 +261,17 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         logo_color_tolerance = st.slider("Tolerancia logos", 4, 80, 24)
 
         st.subheader("Fondo blanco complejo")
-        complex_white_tolerance = st.slider("Tolerancia de blanco", 20, 110, int(mode.get("color_tolerance", 58)))
-        complex_white_luminosity = st.slider("Umbral de luminosidad", 170, 255, 224)
-        complex_white_saturation = st.slider("Umbral de saturacion", 0, 100, 42)
-        complex_white_preserve_internal = st.checkbox("Preservar blancos internos", value=True)
-        complex_white_halo_cleanup = st.checkbox("Limpieza de halo claro", value=True)
-        complex_white_mask_offset = st.selectbox("Contraer/expandir mascara", [-2, -1, 0, 1, 2], index=2, format_func=lambda value: f"{value} px")
-        complex_white_alpha_smoothing = st.selectbox("Suavizado de alpha", [0, 1, 2], index=1, format_func=lambda value: "No" if value == 0 else f"{value} px")
+        complex_white_preset_name = st.selectbox("Preset", list(COMPLEX_WHITE_PRESETS.keys()), index=1)
+        complex_preset = complex_white_preset(complex_white_preset_name)
+        complex_white_tolerance = st.slider("Tolerancia de blanco", 20, 110, complex_preset.white_tolerance)
+        complex_white_luminosity = st.slider("Umbral de luminosidad", 170, 255, complex_preset.luminosity_threshold)
+        complex_white_saturation = st.slider("Umbral de saturacion", 0, 100, complex_preset.saturation_threshold)
+        complex_white_preserve_internal = st.checkbox("Preservar blancos internos", value=complex_preset.preserve_internal_white)
+        complex_white_halo_cleanup = st.checkbox("Limpieza de halo claro", value=complex_preset.halo_cleanup)
+        mask_values = [-2, -1, 0, 1, 2]
+        smooth_values = [0, 1, 2]
+        complex_white_mask_offset = st.selectbox("Contraer/expandir mascara", mask_values, index=mask_values.index(complex_preset.mask_offset), format_func=lambda value: f"{value} px")
+        complex_white_alpha_smoothing = st.selectbox("Suavizado de alpha", smooth_values, index=smooth_values.index(complex_preset.alpha_smoothing), format_func=lambda value: "No" if value == 0 else f"{value} px")
         complex_white_export_debug = st.checkbox("Exportar debug", value=False)
 
     return {
@@ -299,6 +305,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "logo_export_layers": logo_export_layers,
         "logo_max_colors": logo_max_colors,
         "logo_color_tolerance": logo_color_tolerance,
+        "complex_white_preset": complex_white_preset_name,
         "complex_white_tolerance": complex_white_tolerance,
         "complex_white_luminosity": complex_white_luminosity,
         "complex_white_saturation": complex_white_saturation,
@@ -383,6 +390,7 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         logo_export_layers=bool(controls["logo_export_layers"]),
         logo_max_colors=int(controls["logo_max_colors"]),
         logo_color_tolerance=int(controls["logo_color_tolerance"]),
+        complex_white_preset=str(controls["complex_white_preset"]),
         complex_white_tolerance=int(controls["complex_white_tolerance"]),
         complex_white_luminosity=int(controls["complex_white_luminosity"]),
         complex_white_saturation=int(controls["complex_white_saturation"]),
