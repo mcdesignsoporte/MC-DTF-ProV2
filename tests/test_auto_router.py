@@ -28,6 +28,22 @@ class AutoPilotRouterTests(unittest.TestCase):
         self.assertEqual("complex_white_bg", decision["recommended_mode"])
         self.assertEqual("red", decision["traffic_light"])
 
+    def test_pink_panther_detector_payload_routes_to_complex_white(self) -> None:
+        decision = autopilot_route(Image.new("RGBA", (1200, 1600), (240, 240, 240, 255)), _pink_panther_detection())
+
+        self.assertEqual("white_background_complex", decision["case_type"])
+        self.assertEqual("complex_white_bg", decision["recommended_mode"])
+        self.assertEqual("red", decision["traffic_light"])
+        self.assertTrue(decision["needs_manual_review"])
+        self.assertIn("Fondo blanco complejo", str(decision["suggested_next_step"]))
+
+    def test_near_white_complex_synthetic_routes_to_complex_white(self) -> None:
+        decision = autopilot_route(_near_white_complex_artwork())
+
+        self.assertEqual("white_background_complex", decision["case_type"])
+        self.assertEqual("complex_white_bg", decision["recommended_mode"])
+        self.assertEqual("red", decision["traffic_light"])
+
     def test_black_background_routes_to_black_bg(self) -> None:
         decision = autopilot_route(_black_background_artwork())
 
@@ -85,10 +101,50 @@ def _complex_white_artwork() -> Image.Image:
     return img
 
 
+def _near_white_complex_artwork() -> Image.Image:
+    img = Image.new("RGBA", (700, 700), (240, 240, 240, 255))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((170, 140, 530, 540), radius=90, fill=(230, 70, 145, 255), outline=(12, 12, 12, 255), width=9)
+    draw.rectangle((270, 285, 430, 355), fill=(255, 255, 255, 255), outline=(12, 12, 12, 255), width=5)
+    draw.text((235, 90), "PINK", fill=(20, 20, 20, 255))
+    for idx in range(70):
+        x = 70 + (idx * 19) % 560
+        y = 80 + (idx * 37) % 540
+        radius = 2 + idx % 7
+        color = (245, 245, 245, 255) if idx % 3 == 0 else (220, 50 + idx % 120, 150, 255)
+        draw.ellipse((x, y, x + radius, y + radius), fill=color)
+    for idx in range(28):
+        x = 110 + (idx * 23) % 480
+        y = 120 + (idx * 31) % 500
+        draw.line((x, y, x + 95, y + 25), fill=(25, 25, 25, 255), width=2)
+    return img
+
+
 def _black_background_artwork() -> Image.Image:
     img = Image.new("RGBA", (620, 620), (0, 0, 0, 255))
     ImageDraw.Draw(img).rectangle((190, 190, 430, 430), fill=(240, 80, 140, 255))
     return img
+
+
+def _pink_panther_detection() -> dict[str, object]:
+    return {
+        "type": "Fondo de color",
+        "recommended_mode": "color_bg",
+        "use_ai": False,
+        "dominant_color": "#f0f0f0",
+        "white_percent": 50.85,
+        "black_percent": 13.68,
+        "background_uniformity": 81.64,
+        "edge_density": 9.92,
+        "color_count": 157.0,
+        "logo_score": 39.85,
+        "text_score": 100.0,
+        "splash_score": 52.43,
+        "noise_score": 16.61,
+        "transparency_percent": 0.0,
+        "confidence": 90.82,
+        "background": "color dominante",
+    }
 
 
 def _ambiguous_artwork() -> Image.Image:

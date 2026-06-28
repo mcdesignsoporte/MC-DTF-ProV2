@@ -90,14 +90,17 @@ def _case_type(image: Image.Image, data: dict[str, object]) -> str:
     color_count = float(data.get("color_count", 0) or 0)
     logo = float(data.get("logo_score", 0) or 0)
     text = float(data.get("text_score", 0) or 0)
+    splash = float(data.get("splash_score", 0) or 0)
+    noise = float(data.get("noise_score", 0) or 0)
+    near_white = _is_near_white(data.get("dominant_color")) and white >= 38 and uniformity >= 52
     if black > 55 or recommended == "black_bg":
         return "black_background"
     if recommended == "dark_artwork" or (black > 30 and str(data.get("type", "")).lower().find("oscuro") >= 0):
         return "dark_design"
     if recommended == "photograph" or bool(data.get("use_ai", False)):
         return "photo"
-    if background == "blanco" or white > 55:
-        return _white_case(uniformity, edge, color_count, logo, text)
+    if background == "blanco" or white > 55 or near_white:
+        return _white_case(uniformity, edge, color_count, logo, text, splash, noise, recommended)
     if recommended == "color_bg" or uniformity > 58:
         return "color_background"
     if low_resolution:
@@ -107,14 +110,40 @@ def _case_type(image: Image.Image, data: dict[str, object]) -> str:
     return "high_risk_art"
 
 
-def _white_case(uniformity: float, edge: float, color_count: float, logo: float, text: float) -> str:
+def _white_case(
+    uniformity: float,
+    edge: float,
+    color_count: float,
+    logo: float,
+    text: float,
+    splash: float = 0,
+    noise: float = 0,
+    recommended: str = "",
+) -> str:
     complex_score = 0
     complex_score += 2 if edge > 5 else 0
     complex_score += 2 if color_count > 90 else 0
     complex_score += 1 if logo > 38 else 0
     complex_score += 1 if text > 18 else 0
+    complex_score += 2 if text > 70 else 0
+    complex_score += 2 if splash > 35 else 0
+    complex_score += 1 if noise > 14 else 0
+    complex_score += 1 if recommended == "color_bg" and uniformity < 88 else 0
     complex_score += 1 if uniformity < 76 else 0
     return "white_background_complex" if complex_score >= 3 else "white_background_simple"
+
+
+def _is_near_white(value: object) -> bool:
+    text = str(value or "").strip().lstrip("#")
+    if len(text) != 6:
+        return False
+    try:
+        red, green, blue = (int(text[index:index + 2], 16) for index in (0, 2, 4))
+    except ValueError:
+        return False
+    chroma = max(red, green, blue) - min(red, green, blue)
+    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    return luminance >= 225 and chroma <= 18
 
 
 def _mode_for_case(case_type: str) -> str:
