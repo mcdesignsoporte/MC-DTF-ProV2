@@ -27,6 +27,7 @@ from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
 from core.white_protection import protect_white_regions
+from core.white_complex import ComplexWhiteSettings, debug_previews, remove_complex_white_background
 
 logger = get_logger(__name__)
 
@@ -74,6 +75,14 @@ class PipelineSettings:
     dpi: int
     width_cm: float
     height_cm: float
+    complex_white_tolerance: int = 58
+    complex_white_luminosity: int = 224
+    complex_white_saturation: int = 42
+    complex_white_preserve_internal: bool = True
+    complex_white_halo_cleanup: bool = True
+    complex_white_mask_offset: int = 0
+    complex_white_alpha_smoothing: int = 1
+    complex_white_export_debug: bool = False
 
 
 def process_artwork(
@@ -95,17 +104,36 @@ def process_artwork(
     dtf_result = None
     logo_report: dict[str, object] | None = None
     logo_layers: dict[str, object] | None = None
+    complex_debug: dict[str, object] | None = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
     auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
     auto_removable_background = settings.mode_key == "auto" and detection.get("recommended_mode") in {"black_bg", "color_bg"}
-    if (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
+    if settings.mode_key == "complex_white_bg":
+        complex_result = remove_complex_white_background(
+            work,
+            ComplexWhiteSettings(
+                white_tolerance=settings.complex_white_tolerance,
+                luminosity_threshold=settings.complex_white_luminosity,
+                saturation_threshold=settings.complex_white_saturation,
+                preserve_internal_white=settings.complex_white_preserve_internal,
+                halo_cleanup=settings.complex_white_halo_cleanup,
+                mask_offset=settings.complex_white_mask_offset,
+                alpha_smoothing=settings.complex_white_alpha_smoothing,
+            ),
+        )
+        work = complex_result.image
+        complex_debug = {
+            "stats": complex_result.stats,
+            "previews": debug_previews(complex_result),
+        }
+    elif (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
     use_non_destructive = (settings.safe_mode or settings.mode_key == "professional_safe") and not auto_removable_background
-    if use_non_destructive and not auto_photo:
+    if use_non_destructive and not auto_photo and settings.mode_key != "complex_white_bg":
         nd_result = non_destructive_clean(
             work,
             min_area=settings.despeckle_area,
@@ -115,7 +143,7 @@ def process_artwork(
         work = nd_result.image
     elif settings.remove_black:
         work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details, level=settings.black_level)
-    if not use_non_destructive and (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
+    if settings.mode_key != "complex_white_bg" and not use_non_destructive and (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
         work = _remove_auto_background(work, detection, settings)
         if _should_cleanup_light_residue(settings, detection):
             work = cleanup_light_background_residue(work, tolerance=max(settings.color_tolerance + 18, 58))
@@ -162,8 +190,10 @@ def process_artwork(
     metadata_extra = _metadata_extra(nd_result)
     metadata_extra.update(_dtf_metadata_extra(dtf_result))
     metadata_extra.update(_logo_metadata_extra(logo_report))
+    metadata_extra.update(_complex_white_metadata_extra(complex_debug))
     extra_files = _dtf_extra_files(dtf_result)
     extra_files.update(_logo_extra_files(logo_layers, logo_report))
+    extra_files.update(_complex_white_extra_files(complex_debug, settings))
     exports = build_export_package(
         work,
         dpi=settings.dpi,
@@ -199,6 +229,7 @@ def process_artwork(
         "logo_report": logo_report,
         "logo_palette": logo_report.get("palette", []) if logo_report else None,
         "logo_layers": logo_layers.get("layers", []) if logo_layers else None,
+        "complex_white_debug": complex_debug,
         **exports,
     }
 
@@ -331,4 +362,31 @@ def _logo_extra_files(layers: dict[str, object] | None, report: dict[str, object
     }
     if layers:
         files.update(layers.get("files", {}))
+    return files
+
+
+def _complex_white_metadata_extra(debug: dict[str, object] | None) -> dict[str, str]:
+    if not debug:
+        return {}
+    stats = dict(debug.get("stats") or {})
+    return {f"complex_white_{key}": str(value) for key, value in stats.items()}
+
+
+def _complex_white_extra_files(debug: dict[str, object] | None, settings: PipelineSettings) -> dict[str, bytes]:
+    if not debug or not settings.complex_white_export_debug:
+        return {}
+    from core.export import png_bytes
+
+    previews = dict(debug.get("previews") or {})
+    files: dict[str, bytes] = {}
+    names = {
+        "alpha_mask": "debug_alpha_mask.png",
+        "background_mask": "debug_background_mask.png",
+        "preview_black": "debug_preview_black.png",
+        "preview_red": "debug_preview_red.png",
+    }
+    for key, filename in names.items():
+        image = previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
     return files

@@ -83,6 +83,14 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         dpi=options.dpi,
         width_cm=options.width_cm,
         height_cm=options.height_cm,
+        complex_white_tolerance=options.complex_white_tolerance,
+        complex_white_luminosity=options.complex_white_luminosity,
+        complex_white_saturation=options.complex_white_saturation,
+        complex_white_preserve_internal=options.complex_white_preserve_internal,
+        complex_white_halo_cleanup=options.complex_white_halo_cleanup,
+        complex_white_mask_offset=options.complex_white_mask_offset,
+        complex_white_alpha_smoothing=options.complex_white_alpha_smoothing,
+        complex_white_export_debug=options.complex_white_export_debug,
     )
 
 
@@ -179,6 +187,7 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["logo_report"] = result_payload.get("logo_report")
         st.session_state["logo_palette"] = result_payload.get("logo_palette")
         st.session_state["logo_layers"] = result_payload.get("logo_layers")
+        st.session_state["complex_white_debug"] = result_payload.get("complex_white_debug")
         extra_files = dict(result_payload.get("dtf_extra_files") or {})
         metadata_extra = dict(result_payload.get("metadata_extra") or {})
 
@@ -274,6 +283,7 @@ if "result_img" in st.session_state:
         st.session_state.get("logo_report"),
         st.session_state.get("logo_palette"),
         st.session_state.get("logo_layers"),
+        st.session_state.get("complex_white_debug"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(

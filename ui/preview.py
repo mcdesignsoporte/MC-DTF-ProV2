@@ -51,6 +51,7 @@ def render_result_workspace(
     logo_report: dict[str, object] | None = None,
     logo_palette: list[dict[str, object]] | None = None,
     logo_layers: list[dict[str, object]] | None = None,
+    complex_white_debug: dict[str, object] | None = None,
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
@@ -68,6 +69,7 @@ def render_result_workspace(
         "Capas por color",
         "Arte protegido",
         "Riesgo de perdida",
+        "Debug blanco",
         "Original",
     ])
 
@@ -94,6 +96,8 @@ def render_result_workspace(
     with tabs[10]:
         st.image(_risk_preview(original, doubtful_mask, restored_mask), use_container_width=True)
     with tabs[11]:
+        render_complex_white_debug(complex_white_debug)
+    with tabs[12]:
         st.image(composite_preview(original, background), use_container_width=True)
 
     left, right = st.columns([1, 1])
@@ -104,6 +108,7 @@ def render_result_workspace(
         render_non_destructive_stats(non_destructive_stats)
         render_dtf_prepress_stats(alpha_quality, dtf_prepress, small_elements_report)
         render_logo_stats(logo_report, logo_palette)
+        render_complex_white_stats(complex_white_debug)
         render_quality_report(production_report)
     with right:
         render_quality(report)
@@ -299,3 +304,35 @@ def render_logo_stats(report: dict[str, object] | None, palette: list[dict[str, 
     st.metric("Capas por color", str((report or {}).get("layers", 0)))
     if report and report.get("photo_warning"):
         st.warning("La separacion por colores no es recomendada para fotografias.")
+
+
+def render_complex_white_debug(debug: dict[str, object] | None) -> None:
+    """Render debug views for the complex white background flow."""
+    st.subheader("Fondo blanco complejo")
+    if not debug:
+        st.info("Sin diagnostico para este modo.")
+        return
+    previews = dict(debug.get("previews") or {})
+    labels = [
+        ("alpha_mask", "Mascara alpha"),
+        ("background_mask", "Mascara de fondo"),
+        ("preview_black", "Resultado sobre negro"),
+        ("preview_red", "Resultado sobre rojo"),
+    ]
+    for key, label in labels:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+
+
+def render_complex_white_stats(debug: dict[str, object] | None) -> None:
+    """Render complex white background QA metrics."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Fondo blanco complejo")
+    st.metric("Fondo eliminado", str(stats.get("background_removed", 0)))
+    st.metric("Blancos opacos antes", str(stats.get("opaque_light_before", 0)))
+    st.metric("Blancos opacos despues", str(stats.get("opaque_light_after", 0)))
+    st.metric("Color fondo", str(stats.get("background_color", "-")))

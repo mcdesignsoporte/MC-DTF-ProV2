@@ -47,6 +47,14 @@ class ProcessingOptions:
     logo_export_layers: bool
     logo_max_colors: int
     logo_color_tolerance: int
+    complex_white_tolerance: int
+    complex_white_luminosity: int
+    complex_white_saturation: int
+    complex_white_preserve_internal: bool
+    complex_white_halo_cleanup: bool
+    complex_white_mask_offset: int
+    complex_white_alpha_smoothing: int
+    complex_white_export_debug: bool
     max_ai_side: int
     upscale: int
     dpi: int
@@ -67,6 +75,7 @@ LABEL_TO_MODE = {
     "Fondo negro": "Quitar Fondo Negro",
     "Diseño oscuro": "Diseno Oscuro",
     "Fondo de color": "Fondo de color",
+    "Fondo blanco complejo": "Fondo blanco complejo",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -79,6 +88,7 @@ MODE_TO_LABEL = {
     "Quitar Fondo Negro": "Fondo negro",
     "Diseno Oscuro": "Diseño oscuro",
     "Fondo de color": "Fondo de color",
+    "Fondo blanco complejo": "Fondo blanco complejo",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -248,6 +258,16 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         logo_max_colors = st.selectbox("Maximo de colores", [2, 4, 6, 8, 12], index=3)
         logo_color_tolerance = st.slider("Tolerancia logos", 4, 80, 24)
 
+        st.subheader("Fondo blanco complejo")
+        complex_white_tolerance = st.slider("Tolerancia de blanco", 20, 110, int(mode.get("color_tolerance", 58)))
+        complex_white_luminosity = st.slider("Umbral de luminosidad", 170, 255, 224)
+        complex_white_saturation = st.slider("Umbral de saturacion", 0, 100, 42)
+        complex_white_preserve_internal = st.checkbox("Preservar blancos internos", value=True)
+        complex_white_halo_cleanup = st.checkbox("Limpieza de halo claro", value=True)
+        complex_white_mask_offset = st.selectbox("Contraer/expandir mascara", [-2, -1, 0, 1, 2], index=2, format_func=lambda value: f"{value} px")
+        complex_white_alpha_smoothing = st.selectbox("Suavizado de alpha", [0, 1, 2], index=1, format_func=lambda value: "No" if value == 0 else f"{value} px")
+        complex_white_export_debug = st.checkbox("Exportar debug", value=False)
+
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
@@ -279,6 +299,14 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "logo_export_layers": logo_export_layers,
         "logo_max_colors": logo_max_colors,
         "logo_color_tolerance": logo_color_tolerance,
+        "complex_white_tolerance": complex_white_tolerance,
+        "complex_white_luminosity": complex_white_luminosity,
+        "complex_white_saturation": complex_white_saturation,
+        "complex_white_preserve_internal": complex_white_preserve_internal,
+        "complex_white_halo_cleanup": complex_white_halo_cleanup,
+        "complex_white_mask_offset": complex_white_mask_offset,
+        "complex_white_alpha_smoothing": complex_white_alpha_smoothing,
+        "complex_white_export_debug": complex_white_export_debug,
     }
 
 
@@ -355,6 +383,14 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         logo_export_layers=bool(controls["logo_export_layers"]),
         logo_max_colors=int(controls["logo_max_colors"]),
         logo_color_tolerance=int(controls["logo_color_tolerance"]),
+        complex_white_tolerance=int(controls["complex_white_tolerance"]),
+        complex_white_luminosity=int(controls["complex_white_luminosity"]),
+        complex_white_saturation=int(controls["complex_white_saturation"]),
+        complex_white_preserve_internal=bool(controls["complex_white_preserve_internal"]),
+        complex_white_halo_cleanup=bool(controls["complex_white_halo_cleanup"]),
+        complex_white_mask_offset=int(controls["complex_white_mask_offset"]),
+        complex_white_alpha_smoothing=int(controls["complex_white_alpha_smoothing"]),
+        complex_white_export_debug=bool(controls["complex_white_export_debug"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),

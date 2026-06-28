@@ -28,6 +28,7 @@ from core.preview import alpha_preview, before_after_preview, checkerboard, comp
 from core.quality import alpha_histogram, evaluate_dtf_quality
 from core.export import build_export_package
 from core.white_protection import build_protection_mask, protect_white_regions
+from core.white_complex import ComplexWhiteSettings, compose_on_solid, remove_complex_white_background
 from core.artwork_mask import build_artwork_mask
 from core.background_confirm import confirm_background_mask
 from core.non_destructive_clean import non_destructive_clean, estimate_art_loss_risk, restore_artwork_pixels
@@ -448,6 +449,59 @@ class ImageProcessingTests(unittest.TestCase):
 
         self.assertTrue(np.array_equal(np.array(img), np.array(result)))
 
+    def test_complex_white_flow_removes_exterior_background(self):
+        img = _complex_character_artwork()
+
+        result = remove_complex_white_background(img, _complex_settings())
+
+        self.assertEqual(0, result.image.getpixel((0, 0))[3])
+        self.assertGreater(result.stats["background_removed"], 1000)
+        self.assertEqual(result.image.size, result.alpha_mask.size)
+        self.assertEqual(result.image.size, result.background_mask.size)
+
+    def test_complex_white_flow_preserves_internal_white_and_face_detail(self):
+        img = _complex_character_artwork()
+
+        result = remove_complex_white_background(img, _complex_settings()).image
+
+        self.assertEqual(255, result.getpixel((50, 42))[3])
+        self.assertEqual((255, 255, 255), result.getpixel((50, 42))[:3])
+        self.assertEqual(255, result.getpixel((50, 29))[3])
+        self.assertGreater(result.getpixel((50, 29))[0], 210)
+
+    def test_complex_white_flow_reduces_halo_on_black_review(self):
+        img = _complex_character_artwork()
+        rough = remove_complex_white_background(img, _complex_settings(halo_cleanup=False)).image
+        before = edge_light_residue_score(rough)
+
+        result = remove_complex_white_background(img, _complex_settings()).image
+        after = edge_light_residue_score(result)
+
+        self.assertLess(after, before)
+        self.assertEqual((0, 0, 0), compose_on_solid(result, (0, 0, 0)).getpixel((0, 0))[:3])
+
+    def test_complex_white_flow_preserves_black_contours_and_fine_features(self):
+        img = _complex_character_artwork()
+
+        result = remove_complex_white_background(img, _complex_settings()).image
+
+        self.assertEqual(255, result.getpixel((25, 32))[3])
+        self.assertLess(result.getpixel((25, 32))[0], 40)
+        self.assertEqual(255, result.getpixel((43, 37))[3])
+        self.assertLess(result.getpixel((43, 37))[0], 40)
+
+    def test_pipeline_complex_white_exports_debug_when_enabled(self):
+        img = _complex_character_artwork()
+
+        payload = process_artwork(img, {"type": "Fondo blanco complejo"}, _complex_pipeline_settings())
+
+        self.assertIsNotNone(payload["complex_white_debug"])
+        with ZipFile(BytesIO(payload["zip"])) as zf:
+            names = set(zf.namelist())
+            self.assertIn("debug_alpha_mask.png", names)
+            self.assertIn("debug_preview_black.png", names)
+            self.assertIn("debug_preview_red.png", names)
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -651,6 +705,47 @@ def _white_matte_edge_image() -> Image.Image:
     return img
 
 
+def _complex_character_artwork() -> Image.Image:
+    img = Image.new("RGBA", (96, 78), (255, 255, 255, 255))
+    for x in range(24, 72):
+        for y in range(18, 60):
+            if ((x - 48) ** 2) / 900 + ((y - 39) ** 2) / 520 <= 1:
+                img.putpixel((x, y), (230, 70, 145, 255))
+    for x in range(27, 69):
+        img.putpixel((x, 20), (20, 20, 20, 255))
+        img.putpixel((x, 58), (20, 20, 20, 255))
+    for y in range(24, 56):
+        img.putpixel((25, y), (20, 20, 20, 255))
+        img.putpixel((70, y), (20, 20, 20, 255))
+    for x in range(41, 57):
+        for y in range(28, 35):
+            img.putpixel((x, y), (246, 205, 190, 255))
+    for x in range(43, 58):
+        img.putpixel((x, 37), (20, 20, 20, 255))
+    for x in range(42, 59):
+        for y in range(40, 47):
+            img.putpixel((x, y), (255, 255, 255, 255))
+    for x in range(22, 74):
+        for y in [17, 61]:
+            img.putpixel((x, y), (210, 210, 210, 180))
+    for y in range(18, 61):
+        for x in [22, 73]:
+            img.putpixel((x, y), (210, 210, 210, 180))
+    return img
+
+
+def _complex_settings(halo_cleanup: bool = True) -> ComplexWhiteSettings:
+    return ComplexWhiteSettings(
+        white_tolerance=64,
+        luminosity_threshold=222,
+        saturation_threshold=48,
+        preserve_internal_white=True,
+        halo_cleanup=halo_cleanup,
+        mask_offset=0,
+        alpha_smoothing=1,
+    )
+
+
 def _auto_settings() -> PipelineSettings:
     return PipelineSettings(
         mode_key="auto",
@@ -692,4 +787,57 @@ def _auto_settings() -> PipelineSettings:
         dpi=300,
         width_cm=0,
         height_cm=0,
+    )
+
+
+def _complex_pipeline_settings() -> PipelineSettings:
+    settings = _auto_settings()
+    return PipelineSettings(
+        mode_key="complex_white_bg",
+        use_ai=False,
+        remove_black=False,
+        remove_color=False,
+        clean_enabled=True,
+        trim=False,
+        alpha_cut=settings.alpha_cut,
+        despeckle_area=settings.despeckle_area,
+        edge_contract=settings.edge_contract,
+        black_threshold=settings.black_threshold,
+        black_level=settings.black_level,
+        color_tolerance=settings.color_tolerance,
+        protect_details=True,
+        protect_white_details=True,
+        white_protection_level="maxima",
+        fine_detail_level="maxima",
+        safe_mode=True,
+        enable_dtf_prepress=False,
+        remove_white_halo=False,
+        remove_black_halo=False,
+        halo_strength="suave",
+        expand_edge_px=0,
+        bleed_px=0,
+        create_cutline=False,
+        min_printable_mm=1.0,
+        logo_detect_colors=False,
+        logo_reduce_colors=False,
+        logo_black_to_transparent=False,
+        logo_white_to_transparent=False,
+        logo_unify_colors=False,
+        logo_separate_colors=False,
+        logo_export_layers=False,
+        logo_max_colors=8,
+        logo_color_tolerance=24,
+        max_ai_side=1200,
+        upscale=1,
+        dpi=300,
+        width_cm=0,
+        height_cm=0,
+        complex_white_tolerance=64,
+        complex_white_luminosity=222,
+        complex_white_saturation=48,
+        complex_white_preserve_internal=True,
+        complex_white_halo_cleanup=True,
+        complex_white_mask_offset=0,
+        complex_white_alpha_smoothing=1,
+        complex_white_export_debug=True,
     )

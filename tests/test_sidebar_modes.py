@@ -13,6 +13,7 @@ EXPECTED_LABEL_TO_MODE = {
     "Fondo negro": "Quitar Fondo Negro",
     "Diseño oscuro": "Diseno Oscuro",
     "Fondo de color": "Fondo de color",
+    "Fondo blanco complejo": "Fondo blanco complejo",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -25,6 +26,7 @@ EXPECTED_MODE_TO_LABEL = {
     "Quitar Fondo Negro": "Fondo negro",
     "Diseno Oscuro": "Diseño oscuro",
     "Fondo de color": "Fondo de color",
+    "Fondo blanco complejo": "Fondo blanco complejo",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -51,6 +53,7 @@ class SidebarModeMappingTests(unittest.TestCase):
             "Quitar Fondo Negro",
             "Diseno Oscuro",
             "Fondo de color",
+            "Fondo blanco complejo",
             "Preparar DTF",
         }
 
