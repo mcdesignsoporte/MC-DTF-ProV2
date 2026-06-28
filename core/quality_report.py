@@ -20,8 +20,11 @@ def quality_report(
     src = np.array(original.convert("RGBA"))
     dst = np.array(result.convert("RGBA"))
     total = max(1, src.shape[0] * src.shape[1])
-    removed_background = int(np.count_nonzero(background_mask)) if background_mask is not None else int(np.count_nonzero((src[:, :, 3] > 20) & (dst[:, :, 3] <= 20)))
-    protected_art = int(np.count_nonzero(artwork_mask)) if artwork_mask is not None else 0
+    target_shape = src.shape[:2]
+    bg = _normalize_mask(background_mask, target_shape, "background_mask")
+    art = _normalize_mask(artwork_mask, target_shape, "artwork_mask")
+    removed_background = int(np.count_nonzero(bg)) if bg is not None else _fallback_removed_background(src, dst)
+    protected_art = int(np.count_nonzero(art)) if art is not None else 0
     removed_background_percent = round(removed_background / total * 100, 2)
     protected_art_percent = round(protected_art / total * 100, 2)
     risk_detected = bool((risk or {}).get("risk_detected", False))
@@ -56,3 +59,35 @@ def quality_report(
         "cutline_ready": cutline_ready,
         "dtf_ready_score": max(0, int(dtf_score)),
     }
+
+
+def _normalize_mask(mask: object | None, shape: tuple[int, int], name: str) -> np.ndarray | None:
+    """Return a 2D boolean mask matching shape, or None when unavailable."""
+    if mask is None:
+        return None
+    if isinstance(mask, Image.Image):
+        arr = np.array(mask.convert("RGBA"))
+    else:
+        arr = np.asarray(mask)
+    if arr.ndim == 3:
+        arr = arr[:, :, 3] if arr.shape[2] >= 4 else np.any(arr != 0, axis=2)
+    if arr.ndim != 2:
+        raise ValueError(f"{name} debe ser una mascara 2D o imagen convertible; shape={arr.shape}")
+    normalized = arr > 0
+    if normalized.shape != shape:
+        normalized = _resize_mask(normalized, shape)
+    return normalized
+
+
+def _resize_mask(mask: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    img = Image.fromarray(mask.astype(np.uint8) * 255, "L")
+    resized = img.resize((shape[1], shape[0]), Image.Resampling.NEAREST)
+    return np.array(resized) > 0
+
+
+def _fallback_removed_background(src: np.ndarray, dst: np.ndarray) -> int:
+    src_alpha = src[:, :, 3] > 20
+    dst_alpha = dst[:, :, 3] <= 20
+    if dst_alpha.shape != src_alpha.shape:
+        dst_alpha = _resize_mask(dst_alpha, src_alpha.shape)
+    return int(np.count_nonzero(src_alpha & dst_alpha))
