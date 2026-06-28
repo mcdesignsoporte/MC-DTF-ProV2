@@ -57,6 +57,15 @@ class ProcessingOptions:
     complex_white_mask_offset: int
     complex_white_alpha_smoothing: int
     complex_white_export_debug: bool
+    residue_refine_enabled: bool
+    residue_luminosity: int
+    residue_saturation: int
+    residue_min_area: int
+    residue_max_area: int
+    residue_remove_connected: bool
+    residue_remove_small: bool
+    residue_preserve_internal: bool
+    residue_manual_ids: tuple[int, ...]
     max_ai_side: int
     upscale: int
     dpi: int
@@ -274,6 +283,17 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         complex_white_alpha_smoothing = st.selectbox("Suavizado de alpha", smooth_values, index=smooth_values.index(complex_preset.alpha_smoothing), format_func=lambda value: "No" if value == 0 else f"{value} px")
         complex_white_export_debug = st.checkbox("Exportar debug", value=False)
 
+        st.subheader("Refinar residuos blancos")
+        residue_refine_enabled = st.checkbox("Activar refinamiento", value=False)
+        residue_luminosity = st.slider("Luminosidad residuo", 180, 255, 220)
+        residue_saturation = st.slider("Saturacion residuo", 0, 120, 50)
+        residue_min_area = st.number_input("Componente minimo px", min_value=1, max_value=5000, value=8, step=1)
+        residue_max_area = st.number_input("Componente maximo px", min_value=10, max_value=250000, value=5000, step=50)
+        residue_remove_connected = st.checkbox("Borrar conectados a transparencia", value=True)
+        residue_remove_small = st.checkbox("Borrar componentes pequenos", value=False)
+        residue_preserve_internal = st.checkbox("Preservar blancos internos", value=True, key="residue_preserve_internal")
+        residue_manual_text = st.text_input("IDs manuales a borrar", value="", placeholder="Ejemplo: 3, 7, 12")
+
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
@@ -314,6 +334,15 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "complex_white_mask_offset": complex_white_mask_offset,
         "complex_white_alpha_smoothing": complex_white_alpha_smoothing,
         "complex_white_export_debug": complex_white_export_debug,
+        "residue_refine_enabled": residue_refine_enabled,
+        "residue_luminosity": residue_luminosity,
+        "residue_saturation": residue_saturation,
+        "residue_min_area": residue_min_area,
+        "residue_max_area": residue_max_area,
+        "residue_remove_connected": residue_remove_connected,
+        "residue_remove_small": residue_remove_small,
+        "residue_preserve_internal": residue_preserve_internal,
+        "residue_manual_ids": _parse_component_ids(residue_manual_text),
     }
 
 
@@ -399,6 +428,15 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         complex_white_mask_offset=int(controls["complex_white_mask_offset"]),
         complex_white_alpha_smoothing=int(controls["complex_white_alpha_smoothing"]),
         complex_white_export_debug=bool(controls["complex_white_export_debug"]),
+        residue_refine_enabled=bool(controls["residue_refine_enabled"]),
+        residue_luminosity=int(controls["residue_luminosity"]),
+        residue_saturation=int(controls["residue_saturation"]),
+        residue_min_area=int(controls["residue_min_area"]),
+        residue_max_area=int(controls["residue_max_area"]),
+        residue_remove_connected=bool(controls["residue_remove_connected"]),
+        residue_remove_small=bool(controls["residue_remove_small"]),
+        residue_preserve_internal=bool(controls["residue_preserve_internal"]),
+        residue_manual_ids=tuple(controls["residue_manual_ids"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),
@@ -413,3 +451,12 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
 
 def _noise_area(label: str) -> int:
     return {"Muy suave": 1, "Suave": 3, "Normal": 9, "Fuerte": 24}.get(label, 9)
+
+
+def _parse_component_ids(raw: str) -> tuple[int, ...]:
+    values: list[int] = []
+    for part in raw.replace(";", ",").split(","):
+        text = part.strip()
+        if text.isdigit():
+            values.append(int(text))
+    return tuple(sorted(set(values)))

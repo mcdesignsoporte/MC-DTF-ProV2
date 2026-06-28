@@ -324,6 +324,7 @@ def render_complex_white_debug(debug: dict[str, object] | None) -> None:
         if image is not None:
             st.caption(label)
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
+    render_residue_debug(dict(debug.get("residue") or {}))
 
 
 def render_complex_white_stats(debug: dict[str, object] | None) -> None:
@@ -336,3 +337,38 @@ def render_complex_white_stats(debug: dict[str, object] | None) -> None:
     st.metric("Blancos opacos antes", str(stats.get("opaque_light_before", 0)))
     st.metric("Blancos opacos despues", str(stats.get("opaque_light_after", 0)))
     st.metric("Color fondo", str(stats.get("background_color", "-")))
+    render_residue_stats(dict(debug.get("residue") or {}))
+
+
+def render_residue_debug(debug: dict[str, object]) -> None:
+    """Render assisted white-residue refinement diagnostics."""
+    if not debug:
+        return
+    st.subheader("Refinar residuos blancos")
+    previews = dict(debug.get("previews") or {})
+    labels = [
+        ("residue_overlay", "Overlay de componentes"),
+        ("residue_components", "Componentes detectados"),
+        ("refined_preview_black", "Resultado refinado sobre negro"),
+        ("refined_preview_red", "Resultado refinado sobre rojo"),
+    ]
+    for key, label in labels:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+    components = list(debug.get("components") or [])
+    if components:
+        st.dataframe(components, use_container_width=True, hide_index=True)
+
+
+def render_residue_stats(debug: dict[str, object]) -> None:
+    """Render assisted residue cleanup metrics."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Refinar residuos blancos")
+    st.metric("Componentes detectados", str(stats.get("components_detected", 0)))
+    st.metric("Componentes eliminados", str(stats.get("components_removed", 0)))
+    st.metric("Ambiguos conservados", str(stats.get("ambiguous_components", 0)))
+    st.metric("Blancos internos conservados", str(stats.get("internal_components_preserved", 0)))

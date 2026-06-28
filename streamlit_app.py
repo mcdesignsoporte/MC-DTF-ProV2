@@ -92,6 +92,15 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         complex_white_mask_offset=options.complex_white_mask_offset,
         complex_white_alpha_smoothing=options.complex_white_alpha_smoothing,
         complex_white_export_debug=options.complex_white_export_debug,
+        residue_refine_enabled=options.residue_refine_enabled,
+        residue_luminosity=options.residue_luminosity,
+        residue_saturation=options.residue_saturation,
+        residue_min_area=options.residue_min_area,
+        residue_max_area=options.residue_max_area,
+        residue_remove_connected=options.residue_remove_connected,
+        residue_remove_small=options.residue_remove_small,
+        residue_preserve_internal=options.residue_preserve_internal,
+        residue_manual_ids=options.residue_manual_ids,
     )
 
 

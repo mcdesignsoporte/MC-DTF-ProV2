@@ -26,6 +26,12 @@ from core.logo_tools import (
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
+from core.residue_refine import (
+    ResidueRefineSettings,
+    apply_residue_component_removal,
+    build_residue_debug,
+    detect_light_residue_components,
+)
 from core.white_protection import protect_white_regions
 from core.white_complex import ComplexWhiteSettings, debug_previews, remove_complex_white_background
 
@@ -84,6 +90,15 @@ class PipelineSettings:
     complex_white_mask_offset: int = 0
     complex_white_alpha_smoothing: int = 1
     complex_white_export_debug: bool = False
+    residue_refine_enabled: bool = False
+    residue_luminosity: int = 220
+    residue_saturation: int = 50
+    residue_min_area: int = 8
+    residue_max_area: int = 5000
+    residue_remove_connected: bool = True
+    residue_remove_small: bool = False
+    residue_preserve_internal: bool = True
+    residue_manual_ids: tuple[int, ...] = ()
 
 
 def process_artwork(
@@ -129,6 +144,21 @@ def process_artwork(
             "stats": complex_result.stats,
             "previews": debug_previews(complex_result),
         }
+        if settings.residue_refine_enabled:
+            residue_settings = ResidueRefineSettings(
+                luminosity_threshold=settings.residue_luminosity,
+                saturation_threshold=settings.residue_saturation,
+                min_area=settings.residue_min_area,
+                max_area=settings.residue_max_area,
+                remove_connected=settings.residue_remove_connected,
+                remove_small=settings.residue_remove_small,
+                preserve_internal_white=settings.residue_preserve_internal,
+                manual_remove_ids=settings.residue_manual_ids,
+            )
+            residue_source = work
+            components = detect_light_residue_components(residue_source, residue_settings)
+            work = apply_residue_component_removal(residue_source, components, residue_settings)
+            complex_debug["residue"] = build_residue_debug(residue_source, work, components, residue_settings)
     elif (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
@@ -370,7 +400,11 @@ def _complex_white_metadata_extra(debug: dict[str, object] | None) -> dict[str, 
     if not debug:
         return {}
     stats = dict(debug.get("stats") or {})
-    return {f"complex_white_{key}": str(value) for key, value in stats.items()}
+    values = {f"complex_white_{key}": str(value) for key, value in stats.items()}
+    residue = dict(debug.get("residue") or {})
+    residue_stats = dict(residue.get("stats") or {})
+    values.update({f"residue_{key}": str(value) for key, value in residue_stats.items()})
+    return values
 
 
 def _complex_white_extra_files(debug: dict[str, object] | None, settings: PipelineSettings) -> dict[str, bytes]:
@@ -390,4 +424,19 @@ def _complex_white_extra_files(debug: dict[str, object] | None, settings: Pipeli
         image = previews.get(key)
         if image is not None:
             files[filename] = png_bytes(image, dpi=settings.dpi)
+    residue = dict(debug.get("residue") or {})
+    residue_previews = dict(residue.get("previews") or {})
+    residue_names = {
+        "residue_components": "debug_residue_components.png",
+        "residue_overlay": "debug_residue_overlay.png",
+        "refined_preview_black": "debug_refined_preview_black.png",
+        "refined_preview_red": "debug_refined_preview_red.png",
+    }
+    for key, filename in residue_names.items():
+        image = residue_previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
+    report_json = residue.get("report_json")
+    if isinstance(report_json, bytes):
+        files["debug_component_report.json"] = report_json
     return files

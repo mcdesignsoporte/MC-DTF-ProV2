@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from time import perf_counter
 from io import BytesIO
 from zipfile import ZipFile
@@ -30,6 +31,13 @@ from core.export import build_export_package
 from core.white_protection import build_protection_mask, protect_white_regions
 from core.white_complex import ComplexWhiteSettings, compose_on_solid, remove_complex_white_background
 from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
+from core.residue_refine import (
+    ResidueRefineSettings,
+    apply_residue_component_removal,
+    detect_light_residue_components,
+    overlay_residue_components,
+    residue_component_report_json,
+)
 from core.artwork_mask import build_artwork_mask
 from core.background_confirm import confirm_background_mask
 from core.non_destructive_clean import non_destructive_clean, estimate_art_loss_risk, restore_artwork_pixels
@@ -519,6 +527,104 @@ class ImageProcessingTests(unittest.TestCase):
             self.assertIn(settings.mask_offset, {-2, -1, 0, 1, 2})
             self.assertIn(settings.alpha_smoothing, {0, 1, 2})
 
+    def test_detects_white_residue_components_after_cutout(self):
+        img = _residue_refine_artwork()
+
+        components = detect_light_residue_components(img, _residue_settings())
+
+        self.assertGreaterEqual(len(components), 3)
+        self.assertTrue(any(item.classification == "borrar" for item in components))
+
+    def test_residue_refine_preserves_internal_white_with_dark_contour(self):
+        img = _residue_refine_artwork()
+        settings = _residue_settings()
+        components = detect_light_residue_components(img, settings)
+
+        result = apply_residue_component_removal(img, components, settings)
+
+        self.assertEqual(255, result.getpixel((45, 35))[3])
+        self.assertEqual((255, 255, 255), result.getpixel((45, 35))[:3])
+
+    def test_residue_refine_removes_component_connected_to_transparency(self):
+        img = _residue_refine_artwork()
+        settings = _residue_settings()
+        components = detect_light_residue_components(img, settings)
+
+        result = apply_residue_component_removal(img, components, settings)
+
+        self.assertEqual(0, result.getpixel((17, 44))[3])
+
+    def test_residue_refine_removes_manual_component_id(self):
+        img = _residue_refine_artwork()
+        settings = _residue_settings(remove_connected=False)
+        components = detect_light_residue_components(img, settings)
+        ambiguous = next(item for item in components if item.classification == "arte interno")
+
+        manual = replace(settings, manual_remove_ids=(ambiguous.id,))
+        result = apply_residue_component_removal(img, components, manual)
+
+        x1, y1, x2, y2 = ambiguous.bbox
+        self.assertEqual(0, result.getpixel(((x1 + x2) // 2, (y1 + y2) // 2))[3])
+
+    def test_residue_refine_keeps_ambiguous_components_by_default(self):
+        img = _residue_refine_artwork()
+        settings = _residue_settings(remove_connected=False)
+        components = detect_light_residue_components(img, settings)
+        ambiguous = next(item for item in components if item.classification == "arte interno")
+
+        result = apply_residue_component_removal(img, components, settings)
+
+        x1, y1, x2, y2 = ambiguous.bbox
+        self.assertEqual(255, result.getpixel(((x1 + x2) // 2, (y1 + y2) // 2))[3])
+
+    def test_residue_overlay_and_report_generate_without_error(self):
+        img = _residue_refine_artwork()
+        settings = _residue_settings()
+        components = detect_light_residue_components(img, settings)
+
+        overlay = overlay_residue_components(img, components, settings)
+        report = json.loads(residue_component_report_json(components).decode("utf-8"))
+
+        self.assertEqual(img.size, overlay.size)
+        self.assertEqual(len(components), len(report))
+
+    def test_pipeline_complex_white_refinement_exports_debug_files(self):
+        img = _complex_character_artwork_with_residue()
+        settings = replace(
+            _complex_pipeline_settings(),
+            residue_refine_enabled=True,
+            residue_luminosity=218,
+            residue_saturation=60,
+            residue_min_area=4,
+            residue_max_area=2000,
+            residue_remove_connected=True,
+            residue_remove_small=False,
+            residue_preserve_internal=True,
+        )
+
+        payload = process_artwork(img, {"type": "Fondo blanco complejo"}, settings)
+
+        self.assertIsNotNone(payload["complex_white_debug"])
+        self.assertIn("residue", payload["complex_white_debug"])
+        with ZipFile(BytesIO(payload["zip"])) as zf:
+            names = set(zf.namelist())
+            self.assertIn("debug_residue_components.png", names)
+            self.assertIn("debug_residue_overlay.png", names)
+            self.assertIn("debug_refined_preview_black.png", names)
+            self.assertIn("debug_refined_preview_red.png", names)
+            self.assertIn("debug_component_report.json", names)
+
+    def test_residue_refine_does_not_alter_clean_transparent_png(self):
+        img = Image.new("RGBA", (48, 48), (0, 0, 0, 0))
+        img.alpha_composite(Image.new("RGBA", (20, 20), (220, 30, 80, 255)), (14, 14))
+        settings = _residue_settings()
+
+        components = detect_light_residue_components(img, settings)
+        result = apply_residue_component_removal(img, components, settings)
+
+        self.assertEqual([], components)
+        self.assertTrue(np.array_equal(np.array(img), np.array(result)))
+
     def test_before_after_preview_combines_two_panels(self):
         before = Image.new("RGBA", (40, 30), (0, 0, 0, 255))
         after = Image.new("RGBA", (40, 30), (255, 0, 0, 128))
@@ -749,6 +855,43 @@ def _complex_character_artwork() -> Image.Image:
         for x in [22, 73]:
             img.putpixel((x, y), (210, 210, 210, 180))
     return img
+
+
+def _complex_character_artwork_with_residue() -> Image.Image:
+    img = _complex_character_artwork()
+    for x in range(20, 29):
+        for y in range(31, 50):
+            img.putpixel((x, y), (242, 242, 242, 255))
+    return img
+
+
+def _residue_refine_artwork() -> Image.Image:
+    img = _residue_after_first_pass()
+    for x in range(39, 52):
+        img.putpixel((x, 29), (20, 20, 20, 255))
+        img.putpixel((x, 41), (20, 20, 20, 255))
+    for y in range(29, 42):
+        img.putpixel((38, y), (20, 20, 20, 255))
+        img.putpixel((52, y), (20, 20, 20, 255))
+    for x in range(40, 51):
+        for y in range(31, 40):
+            img.putpixel((x, y), (255, 255, 255, 255))
+    for x in range(72, 78):
+        for y in range(14, 20):
+            img.putpixel((x, y), (246, 246, 246, 255))
+    return img
+
+
+def _residue_settings(remove_connected: bool = True) -> ResidueRefineSettings:
+    return ResidueRefineSettings(
+        luminosity_threshold=220,
+        saturation_threshold=55,
+        min_area=4,
+        max_area=3000,
+        remove_connected=remove_connected,
+        remove_small=False,
+        preserve_internal_white=True,
+    )
 
 
 def _complex_settings(halo_cleanup: bool = True) -> ComplexWhiteSettings:
