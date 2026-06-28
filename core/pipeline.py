@@ -8,6 +8,7 @@ import json
 from PIL import Image
 
 from core.background import apply_ai_alpha_to_original, has_transparency, remove_background_ai, resize_for_ai, should_use_ai
+from core.auto_router import autopilot_quality_check, autopilot_route
 from core.black_remove import remove_black_background
 from core.background_remove import cleanup_light_background_residue, cleanup_light_edge_matte, remove_background_opencv, remove_dominant_background
 from core.clean import clean_alpha_with_stats, trim_transparent
@@ -112,6 +113,11 @@ def process_artwork(
     started = perf_counter()
     logger.info("Processing %s with mode=%s", prefix, settings.mode_key)
     work = img.convert("RGBA")
+    autopilot = autopilot_route(work, detection) if settings.mode_key == "auto" else None
+    effective_mode = str((autopilot or {}).get("recommended_mode", settings.mode_key))
+    effective_detection = dict(detection)
+    if autopilot:
+        effective_detection["recommended_mode"] = effective_mode
     white_stats: dict[str, object] | None = None
     white_mask = None
     fine_stats: dict[str, object] | None = None
@@ -124,9 +130,9 @@ def process_artwork(
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
-    auto_photo = settings.mode_key == "auto" and detection.get("recommended_mode") == "photograph"
-    auto_removable_background = settings.mode_key == "auto" and detection.get("recommended_mode") in {"black_bg", "color_bg"}
-    if settings.mode_key == "complex_white_bg":
+    auto_photo = settings.mode_key == "auto" and effective_mode == "photograph"
+    auto_removable_background = settings.mode_key == "auto" and effective_mode in {"black_bg", "color_bg", "complex_white_bg"}
+    if effective_mode == "complex_white_bg":
         complex_result = remove_complex_white_background(
             work,
             ComplexWhiteSettings(
@@ -159,12 +165,12 @@ def process_artwork(
             components = detect_light_residue_components(residue_source, residue_settings)
             work = apply_residue_component_removal(residue_source, components, residue_settings)
             complex_debug["residue"] = build_residue_debug(residue_source, work, components, residue_settings)
-    elif (settings.use_ai or auto_photo) and should_use_ai(detection, "photograph") and not has_transparency(work):
+    elif (settings.use_ai or auto_photo) and (should_use_ai(effective_detection, "photograph") or auto_photo) and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
     use_non_destructive = (settings.safe_mode or settings.mode_key == "professional_safe") and not auto_removable_background
-    if use_non_destructive and not auto_photo and settings.mode_key != "complex_white_bg":
+    if use_non_destructive and not auto_photo and effective_mode != "complex_white_bg":
         nd_result = non_destructive_clean(
             work,
             min_area=settings.despeckle_area,
@@ -172,11 +178,11 @@ def process_artwork(
             safe_mode=True,
         )
         work = nd_result.image
-    elif settings.remove_black:
+    elif settings.remove_black or (settings.mode_key == "auto" and effective_mode in {"black_bg", "dark_artwork"}):
         work = remove_black_background(work, threshold=settings.black_threshold, softness=12, protect_details=settings.protect_details, level=settings.black_level)
-    if settings.mode_key != "complex_white_bg" and not use_non_destructive and (settings.remove_color or settings.mode_key == "auto") and not auto_photo:
-        work = _remove_auto_background(work, detection, settings)
-        if _should_cleanup_light_residue(settings, detection):
+    if effective_mode != "complex_white_bg" and not use_non_destructive and _should_remove_color(settings, effective_mode) and not auto_photo:
+        work = _remove_auto_background(work, effective_detection, settings, effective_mode)
+        if _should_cleanup_light_residue(settings, effective_detection, effective_mode):
             work = cleanup_light_background_residue(work, tolerance=max(settings.color_tolerance + 18, 58))
             work = cleanup_light_edge_matte(work, tolerance=max(settings.color_tolerance + 26, 66))
     if settings.protect_white_details and not auto_photo:
@@ -221,7 +227,9 @@ def process_artwork(
     metadata_extra = _metadata_extra(nd_result)
     metadata_extra.update(_dtf_metadata_extra(dtf_result))
     metadata_extra.update(_logo_metadata_extra(logo_report))
+    auto_quality = autopilot_quality_check(work) if settings.mode_key == "auto" else None
     metadata_extra.update(_complex_white_metadata_extra(complex_debug))
+    metadata_extra.update(_autopilot_metadata_extra(autopilot, auto_quality))
     extra_files = _dtf_extra_files(dtf_result)
     extra_files.update(_logo_extra_files(logo_layers, logo_report))
     extra_files.update(_complex_white_extra_files(complex_debug, settings))
@@ -261,13 +269,15 @@ def process_artwork(
         "logo_palette": logo_report.get("palette", []) if logo_report else None,
         "logo_layers": logo_layers.get("layers", []) if logo_layers else None,
         "complex_white_debug": complex_debug,
+        "autopilot": autopilot,
+        "autopilot_quality": auto_quality,
         **exports,
     }
 
 
-def _remove_auto_background(img: Image.Image, detection: dict[str, object], settings: PipelineSettings) -> Image.Image:
+def _remove_auto_background(img: Image.Image, detection: dict[str, object], settings: PipelineSettings, effective_mode: str | None = None) -> Image.Image:
     """Choose color, chroma, OpenCV, or hybrid background removal."""
-    mode = str(detection.get("recommended_mode", ""))
+    mode = effective_mode or str(detection.get("recommended_mode", ""))
     uniformity = float(detection.get("background_uniformity", 0))
     if mode == "black_bg":
         return remove_black_background(img, threshold=settings.black_threshold, protect_details=settings.protect_details, level=settings.black_level)
@@ -278,10 +288,14 @@ def _remove_auto_background(img: Image.Image, detection: dict[str, object], sett
     return remove_background_opencv(img, protect_details=settings.protect_details)
 
 
-def _should_cleanup_light_residue(settings: PipelineSettings, detection: dict[str, object]) -> bool:
+def _should_remove_color(settings: PipelineSettings, effective_mode: str) -> bool:
+    return settings.remove_color or effective_mode == "color_bg"
+
+
+def _should_cleanup_light_residue(settings: PipelineSettings, detection: dict[str, object], effective_mode: str) -> bool:
     recommended = str(detection.get("recommended_mode", ""))
     background = str(detection.get("background", "")).lower()
-    return settings.mode_key == "color_bg" or (
+    return effective_mode == "color_bg" or (
         settings.mode_key == "auto"
         and recommended == "color_bg"
         and background in {"blanco", "color dominante"}
@@ -440,3 +454,12 @@ def _complex_white_extra_files(debug: dict[str, object] | None, settings: Pipeli
     if isinstance(report_json, bytes):
         files["debug_component_report.json"] = report_json
     return files
+
+
+def _autopilot_metadata_extra(autopilot: dict[str, object] | None, quality: dict[str, object] | None) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if autopilot:
+        values.update({f"autopilot_{key}": str(value) for key, value in autopilot.items()})
+    if quality:
+        values.update({f"autopilot_qa_{key}": str(value) for key, value in quality.items()})
+    return values

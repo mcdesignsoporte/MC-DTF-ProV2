@@ -52,6 +52,8 @@ def render_result_workspace(
     logo_palette: list[dict[str, object]] | None = None,
     logo_layers: list[dict[str, object]] | None = None,
     complex_white_debug: dict[str, object] | None = None,
+    autopilot: dict[str, object] | None = None,
+    autopilot_quality: dict[str, object] | None = None,
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
@@ -109,6 +111,7 @@ def render_result_workspace(
         render_dtf_prepress_stats(alpha_quality, dtf_prepress, small_elements_report)
         render_logo_stats(logo_report, logo_palette)
         render_complex_white_stats(complex_white_debug)
+        render_autopilot_stats(autopilot, autopilot_quality)
         render_quality_report(production_report)
     with right:
         render_quality(report)
@@ -117,6 +120,8 @@ def render_result_workspace(
             st.warning("Posible perdida de detalles blancos.")
         if risk and bool(risk.get("risk_detected", False)):
             st.warning("Riesgo de perdida de arte detectado. Usa modo Conservador Profesional.")
+        if autopilot_quality and bool(autopilot_quality.get("needs_manual_review", False)):
+            st.warning("AutoPilot recomienda revision antes de imprimir.")
         elif risk:
             st.success("Sin perdida de detalles")
 
@@ -269,6 +274,25 @@ def render_quality_report(report: dict[str, object]) -> None:
     st.metric("Score DTF", f"{report.get('dtf_ready_score', report.get('score', 0))}%")
     for warning in report.get("warnings", []):
         st.warning(str(warning))
+
+
+def render_autopilot_stats(autopilot: dict[str, object] | None, quality: dict[str, object] | None) -> None:
+    """Render AutoPilot DTF decision and automatic QA."""
+    if not autopilot and not quality:
+        return
+    st.subheader("AutoPilot DTF")
+    if autopilot:
+        st.metric("Semaforo", str(autopilot.get("traffic_light", "-")))
+        st.metric("Caso", str(autopilot.get("case_type", "-")))
+        st.metric("Ruta", str(autopilot.get("recommended_mode", "-")))
+        st.metric("Confianza", f"{autopilot.get('confidence', 0)}%")
+        st.caption(str(autopilot.get("reason", "")))
+    if quality:
+        st.metric("Halo claro", str(quality.get("halo_light_score", 0)))
+        st.metric("Residuos blancos", str(quality.get("opaque_light_residue_components", 0)))
+        st.metric("Siguiente paso", str(quality.get("suggested_next_step", "-")))
+        if quality.get("traffic_light") == "red":
+            st.warning("No marcar como listo para imprimir: requiere refinamiento asistido.")
 
 
 def render_palette_preview(palette: list[dict[str, object]] | None) -> None:

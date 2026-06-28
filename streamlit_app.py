@@ -198,6 +198,8 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["logo_palette"] = result_payload.get("logo_palette")
         st.session_state["logo_layers"] = result_payload.get("logo_layers")
         st.session_state["complex_white_debug"] = result_payload.get("complex_white_debug")
+        st.session_state["autopilot"] = result_payload.get("autopilot")
+        st.session_state["autopilot_quality"] = result_payload.get("autopilot_quality")
         extra_files = dict(result_payload.get("dtf_extra_files") or {})
         metadata_extra = dict(result_payload.get("metadata_extra") or {})
 
@@ -294,6 +296,8 @@ if "result_img" in st.session_state:
         st.session_state.get("logo_palette"),
         st.session_state.get("logo_layers"),
         st.session_state.get("complex_white_debug"),
+        st.session_state.get("autopilot"),
+        st.session_state.get("autopilot_quality"),
     )
     with st.expander("Descargas", expanded=True):
         render_downloads(
