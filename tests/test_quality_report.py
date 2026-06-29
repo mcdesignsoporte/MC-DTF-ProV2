@@ -7,11 +7,78 @@ import numpy as np
 from PIL import Image
 
 from core.pipeline import PipelineSettings, process_artwork
-from core.quality_report import quality_report
+from core.quality_report import quality_gate, quality_report
 from ui.preview import render_result_workspace
 
 
 class QualityReportCompatibilityTests(unittest.TestCase):
+    def test_dtf_score_53_cannot_be_ready_to_print(self) -> None:
+        gate = quality_gate(dtf_score=53)
+
+        self.assertEqual("Revision obligatoria", gate["status"])
+        self.assertTrue(gate["blocked"])
+
+    def test_white_halo_blocks_ready_to_print(self) -> None:
+        gate = quality_gate(dtf_score=95, halo_white=True)
+
+        self.assertEqual("Revision obligatoria", gate["status"])
+        self.assertIn("Halo blanco en riesgo.", gate["reasons"])
+
+    def test_black_halo_blocks_ready_to_print(self) -> None:
+        gate = quality_gate(dtf_score=95, halo_black=True)
+
+        self.assertEqual("Revision obligatoria", gate["status"])
+        self.assertIn("Halo negro en riesgo.", gate["reasons"])
+
+    def test_internal_review_components_block_ready_to_print(self) -> None:
+        gate = quality_gate(dtf_score=92, internal_residue_stats={
+            "internal_components_detected": 146,
+            "internal_components_removed": 28,
+            "internal_components_review": 29,
+            "internal_protection_reasons": {"7": "area_grande"},
+        })
+
+        self.assertEqual("Revision obligatoria", gate["status"])
+        self.assertTrue(any("29 componentes internos" in reason for reason in gate["reasons"]))
+        self.assertTrue(any("Componentes grandes" in reason for reason in gate["reasons"]))
+
+    def test_autopilot_red_blocks_ready_to_print(self) -> None:
+        gate = quality_gate(
+            dtf_score=95,
+            autopilot={"traffic_light": "red", "needs_manual_review": True},
+        )
+
+        self.assertEqual("Revision obligatoria", gate["status"])
+        self.assertTrue(gate["blocked"])
+
+    def test_clean_high_score_can_be_ready_to_print(self) -> None:
+        gate = quality_gate(dtf_score=96)
+
+        self.assertEqual("Lista para imprimir", gate["status"])
+        self.assertFalse(gate["blocked"])
+
+    def test_pink_panther_like_report_is_mandatory_review(self) -> None:
+        original = Image.new("RGBA", (20, 20), (255, 255, 255, 255))
+        result = Image.new("RGBA", (20, 20), (255, 255, 255, 0))
+
+        report = quality_report(
+            original,
+            result,
+            alpha_quality={"semi_transparent_percent": 0},
+            dtf_prepress={"halo_white_risk": True, "halo_black_risk": True},
+            small_elements_report={"count": 252},
+            internal_residue_stats={
+                "internal_components_detected": 146,
+                "internal_components_removed": 28,
+                "internal_components_protected": 89,
+                "internal_components_review": 29,
+                "internal_protection_reasons": {"1": "area_grande"},
+            },
+        )
+
+        self.assertEqual("Revision obligatoria", report["readiness_status"])
+        self.assertLess(report["dtf_ready_score"], 80)
+
     def test_quality_report_accepts_2d_background_mask(self) -> None:
         original = Image.new("RGBA", (12, 10), (255, 255, 255, 255))
         result = Image.new("RGBA", (12, 10), (255, 255, 255, 0))

@@ -5,11 +5,13 @@ import streamlit as st
 from core.quality import QualityReport
 
 
-def render_quality(report: QualityReport) -> None:
+def render_quality(report: QualityReport, status: str | None = None, reasons: list[object] | None = None) -> None:
     """Render DTF quality score and alpha distribution."""
     st.subheader("Calidad DTF")
     st.metric("Puntuacion", f"{report.stars} {report.score}%")
-    st.caption(report.status)
+    st.caption(status or report.status)
+    for reason in list(reasons or [])[:5]:
+        st.warning(str(reason))
     for label, ok in report.checks.items():
         st.write(f"{'OK' if ok else '-'} {label}")
     st.subheader("Canal alfa")

@@ -57,7 +57,20 @@ def render_result_workspace(
 ) -> None:
     """Render a commercial viewport for large DTF artwork."""
     report = evaluate_dtf_quality(result, dpi=dpi)
-    production_report = quality_report(original, result, artwork_mask, background_mask, risk, alpha_quality, dtf_prepress, small_elements_report)
+    internal_stats = _internal_residue_stats(complex_white_debug)
+    production_report = quality_report(
+        original,
+        result,
+        artwork_mask,
+        background_mask,
+        risk,
+        alpha_quality,
+        dtf_prepress,
+        small_elements_report,
+        internal_residue_stats=internal_stats,
+        autopilot=autopilot,
+        autopilot_quality=autopilot_quality,
+    )
     background = st.selectbox("Fondo de vista", BACKGROUNDS, index=0)
     tabs = st.tabs([
         "Resultado final",
@@ -104,7 +117,7 @@ def render_result_workspace(
 
     left, right = st.columns([1, 1])
     with left:
-        render_technical_info(result, dpi, png_bytes, report.status)
+        render_technical_info(result, dpi, png_bytes, str(production_report.get("readiness_status", report.status)))
         render_white_stats(white_stats)
         render_fine_detail_stats(fine_stats)
         render_non_destructive_stats(non_destructive_stats)
@@ -114,7 +127,7 @@ def render_result_workspace(
         render_autopilot_stats(autopilot, autopilot_quality)
         render_quality_report(production_report)
     with right:
-        render_quality(report)
+        render_quality(report, str(production_report.get("readiness_status", report.status)), production_report.get("readiness_reasons", []))
         st.success("Modo seguro activo")
         if white_stats and bool(white_stats.get("possible_detail_loss", False)):
             st.warning("Posible perdida de detalles blancos.")
@@ -272,6 +285,12 @@ def render_quality_report(report: dict[str, object]) -> None:
     st.metric("Arte protegido", f"{report.get('protected_art_percent', 0)}%")
     st.metric("Riesgo", str(report.get("risk_level", "bajo")))
     st.metric("Score DTF", f"{report.get('dtf_ready_score', report.get('score', 0))}%")
+    st.metric("Estado", str(report.get("readiness_status", "-")))
+    reasons = list(report.get("readiness_reasons", []) or [])
+    if reasons:
+        st.subheader("Motivos")
+        for reason in reasons[:8]:
+            st.warning(str(reason))
     for warning in report.get("warnings", []):
         st.warning(str(warning))
 
@@ -447,3 +466,10 @@ def render_internal_residue_stats(debug: dict[str, object]) -> None:
         st.caption(f"Razones de proteccion: {reasons}")
     if bool(stats.get("internal_no_pixels_removed", False)):
         st.warning("El refinamiento interno no elimino residuos con la configuracion actual.")
+
+
+def _internal_residue_stats(debug: dict[str, object] | None) -> dict[str, object] | None:
+    if not debug:
+        return None
+    internal = dict(debug.get("internal_residue") or {})
+    return dict(internal.get("stats") or {}) if internal else None

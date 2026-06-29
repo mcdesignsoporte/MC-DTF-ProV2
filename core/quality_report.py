@@ -15,6 +15,9 @@ def quality_report(
     alpha_quality: dict[str, object] | None = None,
     dtf_prepress: dict[str, object] | None = None,
     small_elements_report: dict[str, object] | None = None,
+    internal_residue_stats: dict[str, object] | None = None,
+    autopilot: dict[str, object] | None = None,
+    autopilot_quality: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return score, warnings, and production QA metrics."""
     src = np.array(original.convert("RGBA"))
@@ -46,6 +49,16 @@ def quality_report(
         warnings.append("Hay detalles menores al tamano minimo imprimible.")
     score = 100 - (35 if risk_detected else 0) - (10 if protected_art_percent < 1 else 0)
     dtf_score = score - (12 if halo_white else 0) - (10 if halo_black else 0) - (8 if semi > 12 else 0) - min(15, small_count * 3)
+    gate = quality_gate(
+        dtf_score=max(0, int(dtf_score)),
+        halo_white=halo_white,
+        halo_black=halo_black,
+        small_count=small_count,
+        internal_residue_stats=internal_residue_stats,
+        autopilot=autopilot,
+        autopilot_quality=autopilot_quality,
+    )
+    warnings.extend(gate["reasons"])
     return {
         "score": max(0, score),
         "warnings": warnings,
@@ -58,7 +71,76 @@ def quality_report(
         "small_elements_count": small_count,
         "cutline_ready": cutline_ready,
         "dtf_ready_score": max(0, int(dtf_score)),
+        "readiness_status": gate["status"],
+        "readiness_reasons": gate["reasons"],
+        "readiness_blocked": gate["blocked"],
     }
+
+
+def quality_gate(
+    dtf_score: int,
+    halo_white: bool = False,
+    halo_black: bool = False,
+    small_count: int = 0,
+    internal_residue_stats: dict[str, object] | None = None,
+    autopilot: dict[str, object] | None = None,
+    autopilot_quality: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Return an honest DTF readiness status from every known QA signal."""
+    reasons: list[str] = []
+    internal = internal_residue_stats or {}
+    if dtf_score < 80:
+        reasons.append(f"Score DTF {dtf_score}% menor al minimo 80%.")
+    if halo_white:
+        reasons.append("Halo blanco en riesgo.")
+    if halo_black:
+        reasons.append("Halo negro en riesgo.")
+    if small_count > 0:
+        reasons.append(f"{small_count} elementos pequenos requieren revision.")
+    _internal_residue_reasons(internal, reasons)
+    _autopilot_reasons(autopilot, autopilot_quality, reasons)
+    status = _readiness_status(dtf_score, reasons)
+    return {"status": status, "reasons": reasons, "blocked": status != "Lista para imprimir"}
+
+
+def _internal_residue_reasons(stats: dict[str, object], reasons: list[str]) -> None:
+    review = int(stats.get("internal_components_review", 0) or 0)
+    detected = int(stats.get("internal_components_detected", 0) or 0)
+    removed = int(stats.get("internal_components_removed", 0) or 0)
+    protected_reasons = dict(stats.get("internal_protection_reasons", {}) or {})
+    area_grande_ids = [key for key, value in protected_reasons.items() if value == "area_grande"]
+    if review > 0:
+        reasons.append(f"{review} componentes internos en revision.")
+    if area_grande_ids:
+        reasons.append("Componentes grandes protegidos requieren revision manual.")
+    if detected > removed and detected >= 8:
+        pending = detected - removed
+        reasons.append(f"{pending} residuos internos pendientes despues del refinamiento.")
+
+
+def _autopilot_reasons(
+    autopilot: dict[str, object] | None,
+    autopilot_quality: dict[str, object] | None,
+    reasons: list[str],
+) -> None:
+    for payload in [autopilot or {}, autopilot_quality or {}]:
+        if payload.get("traffic_light") == "red":
+            reasons.append("AutoPilot esta en rojo.")
+        if bool(payload.get("needs_manual_review", False)):
+            reasons.append("AutoPilot requiere revision manual.")
+
+
+def _readiness_status(dtf_score: int, reasons: list[str]) -> str:
+    if not reasons:
+        return "Lista para imprimir"
+    if dtf_score < 50:
+        return "No apta todavia"
+    hard = any(
+        term in reason
+        for reason in reasons
+        for term in ["Score DTF", "Halo", "revision", "AutoPilot esta en rojo", "pendientes"]
+    )
+    return "Revision obligatoria" if hard else "Revision recomendada"
 
 
 def _normalize_mask(mask: object | None, shape: tuple[int, int], name: str) -> np.ndarray | None:
