@@ -369,6 +369,7 @@ def render_complex_white_debug(debug: dict[str, object] | None) -> None:
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
     render_residue_debug(dict(debug.get("residue") or {}))
     render_internal_residue_debug(dict(debug.get("internal_residue") or {}))
+    render_manual_white_debug(dict(debug.get("manual_white") or {}))
 
 
 def render_complex_white_stats(debug: dict[str, object] | None) -> None:
@@ -383,6 +384,7 @@ def render_complex_white_stats(debug: dict[str, object] | None) -> None:
     st.metric("Color fondo", str(stats.get("background_color", "-")))
     render_residue_stats(dict(debug.get("residue") or {}))
     render_internal_residue_stats(dict(debug.get("internal_residue") or {}))
+    render_manual_white_stats(dict(debug.get("manual_white") or {}))
 
 
 def render_residue_debug(debug: dict[str, object]) -> None:
@@ -466,6 +468,42 @@ def render_internal_residue_stats(debug: dict[str, object]) -> None:
         st.caption(f"Razones de proteccion: {reasons}")
     if bool(stats.get("internal_no_pixels_removed", False)):
         st.warning("El refinamiento interno no elimino residuos con la configuracion actual.")
+
+
+def render_manual_white_debug(debug: dict[str, object]) -> None:
+    """Render manual seed-selected white-region diagnostics."""
+    if not debug:
+        return
+    st.subheader("Borrar zona blanca manual")
+    previews = dict(debug.get("previews") or {})
+    labels = [
+        ("selected_region", "Region seleccionada"),
+        ("region_overlay", "Overlay de region"),
+        ("region_removed", "Resultado con borrado manual"),
+    ]
+    for key, label in labels:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+    components = list(debug.get("components") or [])
+    if components:
+        st.dataframe(components, use_container_width=True, hide_index=True)
+
+
+def render_manual_white_stats(debug: dict[str, object]) -> None:
+    """Render manual white region cleanup statistics."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Borrar zona blanca manual")
+    st.metric("Regiones aplicadas", str(stats.get("applied_count", 0)))
+    st.metric("Regiones rechazadas", str(stats.get("rejected_count", 0)))
+    st.metric("Area aplicada", str(stats.get("applied_area", 0)))
+    st.caption(f"Semillas: {stats.get('seeds', [])}")
+    rejected = stats.get("rejected_reasons", [])
+    if rejected:
+        st.warning(f"Regiones rechazadas: {rejected}")
 
 
 def _internal_residue_stats(debug: dict[str, object] | None) -> dict[str, object] | None:

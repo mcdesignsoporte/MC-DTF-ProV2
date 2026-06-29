@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import streamlit as st
 
 from core.constants import DEFAULT_DPI
+from core.manual_white_region import parse_seed_text
 from core.modes import MODES
 from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
 
@@ -74,6 +75,14 @@ class ProcessingOptions:
     internal_residue_saturation: int
     internal_residue_auto_remove: bool
     internal_residue_manual_ids: tuple[int, ...]
+    manual_white_enabled: bool
+    manual_white_seeds: tuple[tuple[int, int], ...]
+    manual_white_tolerance: int
+    manual_white_luminosity: int
+    manual_white_saturation: int
+    manual_white_max_area: int
+    manual_white_connectivity: int
+    manual_white_action: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -312,6 +321,24 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         internal_residue_auto_remove = st.checkbox("Borrar automaticamente alta confianza", value=False)
         internal_residue_manual_text = st.text_input("IDs internos manuales a borrar", value="", placeholder="Ejemplo: 2, 5")
 
+        st.subheader("Borrar zona blanca manual")
+        manual_white_enabled = st.checkbox("Activar herramienta manual", value=False)
+        manual_white_x = st.number_input("Coordenada X", min_value=0, value=0, step=1)
+        manual_white_y = st.number_input("Coordenada Y", min_value=0, value=0, step=1)
+        manual_white_seed_text = st.text_input("Varias semillas", value="", placeholder="x1,y1; x2,y2")
+        manual_white_tolerance = st.slider("Tolerancia seleccion", 4, 120, 42)
+        manual_white_luminosity = st.slider("Luminosidad manual minima", 120, 255, 190)
+        manual_white_saturation = st.slider("Saturacion manual maxima", 0, 140, 90)
+        manual_white_max_area = st.number_input("Area maxima permitida", min_value=10, max_value=500000, value=50000, step=100)
+        manual_white_connectivity = st.selectbox("Conectividad", [4, 8], index=1)
+        st.caption(f"Accion actual: {st.session_state.get('manual_white_action', 'preview')}")
+        if st.button("Previsualizar region"):
+            st.session_state["manual_white_action"] = "preview"
+        if st.button("Borrar region seleccionada"):
+            st.session_state["manual_white_action"] = "apply"
+        if st.button("Restablecer borrado manual"):
+            st.session_state["manual_white_action"] = "reset"
+
     return {
         "alpha_cut": alpha_cut,
         "black_threshold": black_threshold,
@@ -369,6 +396,14 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "internal_residue_saturation": internal_residue_saturation,
         "internal_residue_auto_remove": internal_residue_auto_remove,
         "internal_residue_manual_ids": _parse_component_ids(internal_residue_manual_text),
+        "manual_white_enabled": manual_white_enabled,
+        "manual_white_seeds": _manual_seeds(int(manual_white_x), int(manual_white_y), manual_white_seed_text),
+        "manual_white_tolerance": manual_white_tolerance,
+        "manual_white_luminosity": manual_white_luminosity,
+        "manual_white_saturation": manual_white_saturation,
+        "manual_white_max_area": manual_white_max_area,
+        "manual_white_connectivity": manual_white_connectivity,
+        "manual_white_action": str(st.session_state.get("manual_white_action", "preview")),
     }
 
 
@@ -471,6 +506,14 @@ def render_sidebar(selected_mode: str) -> ProcessingOptions:
         internal_residue_saturation=int(controls["internal_residue_saturation"]),
         internal_residue_auto_remove=bool(controls["internal_residue_auto_remove"]),
         internal_residue_manual_ids=tuple(controls["internal_residue_manual_ids"]),
+        manual_white_enabled=bool(controls["manual_white_enabled"]),
+        manual_white_seeds=tuple(controls["manual_white_seeds"]),
+        manual_white_tolerance=int(controls["manual_white_tolerance"]),
+        manual_white_luminosity=int(controls["manual_white_luminosity"]),
+        manual_white_saturation=int(controls["manual_white_saturation"]),
+        manual_white_max_area=int(controls["manual_white_max_area"]),
+        manual_white_connectivity=int(controls["manual_white_connectivity"]),
+        manual_white_action=str(controls["manual_white_action"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),
@@ -494,3 +537,10 @@ def _parse_component_ids(raw: str) -> tuple[int, ...]:
         if text.isdigit():
             values.append(int(text))
     return tuple(sorted(set(values)))
+
+
+def _manual_seeds(x: int, y: int, raw: str) -> tuple[tuple[int, int], ...]:
+    seeds = list(parse_seed_text(raw))
+    if not seeds:
+        seeds.append((x, y))
+    return tuple(dict.fromkeys(seeds))

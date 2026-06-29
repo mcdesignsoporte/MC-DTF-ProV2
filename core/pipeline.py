@@ -24,6 +24,14 @@ from core.logo_tools import (
     unify_similar_colors,
     white_to_transparent,
 )
+from core.manual_white_region import (
+    ManualWhiteRegionSettings,
+    manual_white_region_report_json,
+    preview_selected_region_overlay,
+    remove_light_region_by_seed,
+    select_light_region_by_seed,
+    selected_region_mask_image,
+)
 from core.resize import fit_to_print_size, upscale_and_sharpen
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
@@ -112,6 +120,14 @@ class PipelineSettings:
     internal_residue_saturation: int = 58
     internal_residue_auto_remove: bool = False
     internal_residue_manual_ids: tuple[int, ...] = ()
+    manual_white_enabled: bool = False
+    manual_white_seeds: tuple[tuple[int, int], ...] = ()
+    manual_white_tolerance: int = 42
+    manual_white_luminosity: int = 190
+    manual_white_saturation: int = 90
+    manual_white_max_area: int = 50000
+    manual_white_connectivity: int = 8
+    manual_white_action: str = "preview"
 
 
 def process_artwork(
@@ -140,6 +156,7 @@ def process_artwork(
     logo_layers: dict[str, object] | None = None
     complex_debug: dict[str, object] | None = None
     internal_settings: InternalLightResidueSettings | None = None
+    manual_settings: ManualWhiteRegionSettings | None = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
@@ -188,6 +205,14 @@ def process_artwork(
                 auto_remove_high_confidence=settings.internal_residue_auto_remove,
                 manual_remove_ids=settings.internal_residue_manual_ids,
             )
+        if settings.manual_white_enabled:
+            manual_settings = ManualWhiteRegionSettings(
+                tolerance=settings.manual_white_tolerance,
+                luminosity_min=settings.manual_white_luminosity,
+                saturation_max=settings.manual_white_saturation,
+                max_area=settings.manual_white_max_area,
+                connectivity=settings.manual_white_connectivity,
+            )
     elif (settings.use_ai or auto_photo) and (should_use_ai(effective_detection, "photograph") or auto_photo) and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
         ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
@@ -216,6 +241,15 @@ def process_artwork(
         internal_components = detect_internal_light_residue_components(internal_source, internal_settings)
         work = remove_selected_light_residue_components(internal_source, internal_components, internal_settings)
         complex_debug["internal_residue"] = build_internal_residue_debug(internal_source, work, internal_components, internal_settings)
+    if manual_settings is not None and complex_debug is not None:
+        manual_source = work
+        if settings.manual_white_action == "apply":
+            work, selections = remove_light_region_by_seed(manual_source, settings.manual_white_seeds, manual_settings)
+        elif settings.manual_white_action == "reset":
+            selections = []
+        else:
+            selections = [select_light_region_by_seed(manual_source, seed, manual_settings) for seed in settings.manual_white_seeds]
+        complex_debug["manual_white"] = _manual_white_debug(manual_source, work, selections)
     if settings.clean_enabled:
         work, stats, fine_mask = clean_alpha_with_stats(
             work,
@@ -449,6 +483,9 @@ def _complex_white_metadata_extra(debug: dict[str, object] | None) -> dict[str, 
     internal = dict(debug.get("internal_residue") or {})
     internal_stats = dict(internal.get("stats") or {})
     values.update({f"internal_residue_{key}": str(value) for key, value in internal_stats.items()})
+    manual = dict(debug.get("manual_white") or {})
+    manual_stats = dict(manual.get("stats") or {})
+    values.update({f"manual_white_{key}": str(value) for key, value in manual_stats.items()})
     return values
 
 
@@ -498,6 +535,20 @@ def _complex_white_extra_files(debug: dict[str, object] | None, settings: Pipeli
     internal_report = internal.get("report_json")
     if isinstance(internal_report, bytes):
         files["debug_internal_residue_report.json"] = internal_report
+    manual = dict(debug.get("manual_white") or {})
+    manual_previews = dict(manual.get("previews") or {})
+    manual_names = {
+        "selected_region": "debug_manual_selected_region.png",
+        "region_overlay": "debug_manual_region_overlay.png",
+        "region_removed": "debug_manual_region_removed.png",
+    }
+    for key, filename in manual_names.items():
+        image = manual_previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
+    manual_report = manual.get("report_json")
+    if isinstance(manual_report, bytes):
+        files["debug_manual_region_report.json"] = manual_report
     return files
 
 
@@ -508,3 +559,25 @@ def _autopilot_metadata_extra(autopilot: dict[str, object] | None, quality: dict
     if quality:
         values.update({f"autopilot_qa_{key}": str(value) for key, value in quality.items()})
     return values
+
+
+def _manual_white_debug(source: Image.Image, result: Image.Image, selections: list) -> dict[str, object]:
+    mask = selected_region_mask_image(selections)
+    report = {
+        "regions": [selection.report() for selection in selections],
+        "applied_count": sum(1 for selection in selections if selection.decision == "aplicado"),
+        "rejected_count": sum(1 for selection in selections if selection.decision != "aplicado"),
+        "applied_area": sum(selection.area for selection in selections if selection.decision == "aplicado"),
+        "rejected_reasons": [selection.reason for selection in selections if selection.decision != "aplicado"],
+        "seeds": [selection.seed for selection in selections],
+    }
+    return {
+        "stats": report,
+        "components": report["regions"],
+        "previews": {
+            "selected_region": mask,
+            "region_overlay": preview_selected_region_overlay(source, selections) if selections else None,
+            "region_removed": result,
+        },
+        "report_json": manual_white_region_report_json(selections),
+    }

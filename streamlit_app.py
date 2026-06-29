@@ -109,6 +109,14 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         internal_residue_saturation=options.internal_residue_saturation,
         internal_residue_auto_remove=options.internal_residue_auto_remove,
         internal_residue_manual_ids=options.internal_residue_manual_ids,
+        manual_white_enabled=options.manual_white_enabled,
+        manual_white_seeds=options.manual_white_seeds,
+        manual_white_tolerance=options.manual_white_tolerance,
+        manual_white_luminosity=options.manual_white_luminosity,
+        manual_white_saturation=options.manual_white_saturation,
+        manual_white_max_area=options.manual_white_max_area,
+        manual_white_connectivity=options.manual_white_connectivity,
+        manual_white_action=options.manual_white_action,
     )
 
 
