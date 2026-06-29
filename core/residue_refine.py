@@ -70,6 +70,7 @@ class InternalLightResidueComponent:
     transparency_border_percent: float
     residue_score: int
     suggested_action: str
+    protection_reason: str
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -197,6 +198,7 @@ def detect_internal_light_residue_components(
             colored_neighbor_percent=color_percent,
             settings=options,
         )
+        action, reason = _internal_action_and_reason(score, area, dark_percent, color_percent, options)
         components.append(InternalLightResidueComponent(
             id=component_id,
             area=area,
@@ -207,7 +209,8 @@ def detect_internal_light_residue_components(
             dark_neighbor_percent=round(dark_percent, 2),
             transparency_border_percent=round(transparent_percent, 2),
             residue_score=score,
-            suggested_action=_internal_action(score, area, dark_percent, color_percent, options),
+            suggested_action=action,
+            protection_reason=reason,
         ))
     return components
 
@@ -253,6 +256,33 @@ def remove_selected_light_residue_components(
     return Image.fromarray(out, "RGBA")
 
 
+def force_remove_internal_review_components(
+    image: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings | None = None,
+) -> Image.Image:
+    """Debug helper that removes every component marked borrar or revisar."""
+    options = settings or InternalLightResidueSettings()
+    force_ids = tuple(item.id for item in components if item.suggested_action in {"borrar", "revisar"})
+    return remove_selected_light_residue_components(image, components, replace_internal_manual_ids(options, force_ids))
+
+
+def replace_internal_manual_ids(
+    settings: InternalLightResidueSettings,
+    manual_ids: tuple[int, ...],
+) -> InternalLightResidueSettings:
+    """Return settings with manual IDs replaced without importing dataclasses.replace."""
+    return InternalLightResidueSettings(
+        min_area=settings.min_area,
+        max_area=settings.max_area,
+        dark_neighbor_threshold=settings.dark_neighbor_threshold,
+        luminosity_threshold=settings.luminosity_threshold,
+        saturation_threshold=settings.saturation_threshold,
+        auto_remove_high_confidence=settings.auto_remove_high_confidence,
+        manual_remove_ids=manual_ids,
+    )
+
+
 def build_light_residue_overlay(
     image: Image.Image,
     components: list[InternalLightResidueComponent],
@@ -263,12 +293,13 @@ def build_light_residue_overlay(
     base = compose_on_solid(image, (0, 0, 0)).convert("RGBA")
     labels, _ = build_residue_component_map(_internal_light_mask(np.array(image.convert("RGBA")), options))
     overlay = np.zeros((base.height, base.width, 4), dtype=np.uint8)
+    remove_ids = _internal_removable_ids(components, options)
     for component in components:
-        color = (240, 40, 40, 190)
-        if component.suggested_action == "revisar":
+        color = (40, 130, 255, 175)
+        if component.id in remove_ids:
+            color = (240, 40, 40, 200)
+        elif component.suggested_action == "revisar":
             color = (255, 210, 30, 170)
-        if component.suggested_action == "conservar":
-            color = (0, 220, 120, 150)
         overlay[labels == component.id] = color
     base.alpha_composite(Image.fromarray(overlay, "RGBA"))
     draw = ImageDraw.Draw(base)
@@ -285,14 +316,10 @@ def build_internal_residue_debug(
     settings: InternalLightResidueSettings,
 ) -> dict[str, object]:
     """Build previews and report for trapped internal white residue cleanup."""
+    diagnostics = _internal_residue_stats(source, refined, components, settings)
     return {
         "components": [component.to_dict() for component in components],
-        "stats": {
-            "internal_components_detected": len(components),
-            "internal_components_removed": len(_internal_removable_ids(components, settings)),
-            "internal_residue_area": sum(item.area for item in components if item.suggested_action in {"borrar", "revisar"}),
-            "internal_high_confidence": sum(1 for item in components if item.suggested_action == "borrar"),
-        },
+        "stats": diagnostics,
         "previews": {
             "internal_residue_mask": _internal_component_mask(source, components, settings),
             "internal_residue_overlay": build_light_residue_overlay(source, components, settings),
@@ -497,20 +524,21 @@ def _bbox(mask: np.ndarray) -> tuple[int, int, int, int]:
     return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
 
-def _internal_action(
+def _internal_action_and_reason(
     score: int,
     area: int,
     dark_percent: float,
     color_percent: float,
     settings: InternalLightResidueSettings,
-) -> str:
+) -> tuple[str, str]:
     if area > settings.max_area * 0.65 or color_percent >= 34:
-        return "conservar"
+        reason = "area_grande" if area > settings.max_area * 0.65 else "contexto_color"
+        return "conservar", reason
     if score >= 72 and dark_percent >= settings.dark_neighbor_threshold:
-        return "borrar"
+        return "borrar", "alto_contraste"
     if score >= 50 and dark_percent >= max(18, settings.dark_neighbor_threshold * 0.65):
-        return "revisar"
-    return "conservar"
+        return "revisar", "score_ambiguo"
+    return "conservar", "score_bajo"
 
 
 def _internal_removable_ids(
@@ -518,10 +546,20 @@ def _internal_removable_ids(
     settings: InternalLightResidueSettings,
 ) -> set[int]:
     manual = set(settings.manual_remove_ids)
-    selected = set(manual)
+    found = {item.id for item in components}
+    selected = {item.id for item in components if item.id in manual and not _manual_rejected(item, settings)}
     if settings.auto_remove_high_confidence:
         selected.update(item.id for item in components if item.suggested_action == "borrar")
+    selected &= found
     return selected
+
+
+def _manual_rejected(component: InternalLightResidueComponent, settings: InternalLightResidueSettings) -> bool:
+    if component.suggested_action != "conservar":
+        return False
+    if component.protection_reason == "contexto_color":
+        return True
+    return component.protection_reason == "area_grande" and component.area > settings.max_area * 0.85
 
 
 def _internal_component_mask(
@@ -532,10 +570,50 @@ def _internal_component_mask(
     labels, _ = build_residue_component_map(_internal_light_mask(np.array(image.convert("RGBA")), settings))
     out = np.zeros((labels.shape[0], labels.shape[1], 4), dtype=np.uint8)
     for component in components:
-        color = (240, 40, 40, 230)
-        if component.suggested_action == "revisar":
+        color = (40, 130, 255, 210)
+        if component.id in _internal_removable_ids(components, settings):
+            color = (240, 40, 40, 235)
+        elif component.suggested_action == "revisar":
             color = (255, 210, 30, 210)
-        if component.suggested_action == "conservar":
-            color = (0, 220, 120, 180)
         out[labels == component.id] = color
     return Image.fromarray(out, "RGBA")
+
+
+def _internal_residue_stats(
+    source: Image.Image,
+    refined: Image.Image,
+    components: list[InternalLightResidueComponent],
+    settings: InternalLightResidueSettings,
+) -> dict[str, object]:
+    source_alpha = np.array(source.convert("RGBA").getchannel("A"))
+    refined_alpha = np.array(refined.convert("RGBA").getchannel("A"))
+    removed_pixels = int(np.count_nonzero((source_alpha > 20) & (refined_alpha <= 20)))
+    total = max(1, source_alpha.size)
+    remove_ids = sorted(_internal_removable_ids(components, settings))
+    manual = set(settings.manual_remove_ids)
+    found_manual = sorted(manual & {item.id for item in components})
+    rejected_manual = sorted(item.id for item in components if item.id in manual and _manual_rejected(item, settings))
+    protected = [item for item in components if item.suggested_action == "conservar"]
+    review = [item for item in components if item.suggested_action == "revisar"]
+    high = [item for item in components if item.suggested_action == "borrar"]
+    protection_reasons = {str(item.id): item.protection_reason for item in protected}
+    return {
+        "internal_components_detected": len(components),
+        "internal_components_removed": len(remove_ids),
+        "internal_components_protected": len(protected),
+        "internal_components_review": len(review),
+        "internal_residue_area": sum(item.area for item in components),
+        "internal_residue_candidate_area": sum(item.area for item in high + review),
+        "internal_removed_area": sum(item.area for item in components if item.id in set(remove_ids)),
+        "internal_removed_pixels": removed_pixels,
+        "internal_alpha_change_percent": round(removed_pixels / total * 100, 4),
+        "internal_high_confidence": len(high),
+        "internal_removed_ids": remove_ids,
+        "internal_protected_ids": [item.id for item in protected],
+        "internal_review_ids": [item.id for item in review],
+        "internal_manual_found_ids": found_manual,
+        "internal_manual_removed_ids": sorted(set(remove_ids) & manual),
+        "internal_manual_rejected_ids": rejected_manual,
+        "internal_protection_reasons": protection_reasons,
+        "internal_no_pixels_removed": removed_pixels == 0,
+    }

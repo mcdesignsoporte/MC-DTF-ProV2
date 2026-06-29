@@ -5,6 +5,7 @@ from dataclasses import replace
 from io import BytesIO
 from zipfile import ZipFile
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 from core.auto_router import autopilot_quality_check
@@ -13,8 +14,10 @@ from core.residue_refine import (
     InternalLightResidueSettings,
     build_light_residue_overlay,
     detect_internal_light_residue_components,
+    force_remove_internal_review_components,
     remove_selected_light_residue_components,
 )
+from ui.sidebar import ProcessingOptions
 
 
 class InternalLightResidueTests(unittest.TestCase):
@@ -102,6 +105,66 @@ class InternalLightResidueTests(unittest.TestCase):
             self.assertIn("debug_preview_green.png", names)
             self.assertIn("debug_internal_residue_report.json", names)
 
+    def test_debug_reports_when_internal_refinement_removes_no_pixels(self) -> None:
+        settings = replace(_pipeline_settings(), internal_residue_enabled=True, internal_residue_auto_remove=True)
+
+        payload = process_artwork(_pink_letter_with_shine(), {"type": "Fondo blanco complejo"}, settings)
+        stats = payload["complex_white_debug"]["internal_residue"]["stats"]
+
+        self.assertEqual(0, stats["internal_removed_pixels"])
+        self.assertTrue(stats["internal_no_pixels_removed"])
+
+    def test_final_preview_payload_uses_refined_result(self) -> None:
+        settings = replace(_pipeline_settings(), internal_residue_enabled=True, internal_residue_auto_remove=True)
+
+        payload = process_artwork(_black_line_residue_art(), {"type": "Fondo blanco complejo"}, settings)
+
+        self.assertLess(_opaque_white_pixels(payload["image"]), _opaque_white_pixels(_black_line_residue_art()))
+        self.assertGreater(payload["complex_white_debug"]["internal_residue"]["stats"]["internal_removed_pixels"], 0)
+
+    def test_overlay_distinguishes_removed_review_and_protected_components(self) -> None:
+        img = _mixed_status_art()
+        settings = replace(_internal_settings(), auto_remove_high_confidence=True, dark_neighbor_threshold=50)
+        components = detect_internal_light_residue_components(img, settings)
+        components = [
+            replace(components[0], suggested_action="borrar"),
+            replace(components[1], suggested_action="revisar"),
+            replace(components[2], suggested_action="conservar"),
+        ]
+
+        overlay = build_light_residue_overlay(img, components, settings)
+        colors = {tuple(pixel) for pixel in np.array(overlay.convert("RGBA")).reshape(-1, 4)}
+
+        self.assertTrue(any(red > 220 and green < 130 and blue < 130 and alpha > 0 for red, green, blue, alpha in colors))
+        self.assertTrue(any(red > 220 and green > 180 and blue < 130 and alpha > 0 for red, green, blue, alpha in colors))
+        self.assertTrue(any(red < 140 and green > 100 and blue > 220 and alpha > 0 for red, green, blue, alpha in colors))
+
+    def test_forced_debug_removes_borrar_and_review_components(self) -> None:
+        img = _mixed_status_art()
+        settings = _internal_settings()
+        components = detect_internal_light_residue_components(img, settings)
+
+        forced = force_remove_internal_review_components(img, components, settings)
+
+        self.assertLess(_opaque_white_pixels(forced), _opaque_white_pixels(img))
+
+    def test_sidebar_internal_residue_fields_match_pipeline_settings(self) -> None:
+        option_fields = ProcessingOptions.__dataclass_fields__
+        pipeline_fields = PipelineSettings.__dataclass_fields__
+
+        for name in [
+            "internal_residue_enabled",
+            "internal_residue_min_area",
+            "internal_residue_max_area",
+            "internal_residue_dark_sensitivity",
+            "internal_residue_luminosity",
+            "internal_residue_saturation",
+            "internal_residue_auto_remove",
+            "internal_residue_manual_ids",
+        ]:
+            self.assertIn(name, option_fields)
+            self.assertIn(name, pipeline_fields)
+
 
 def _internal_settings() -> InternalLightResidueSettings:
     return InternalLightResidueSettings(
@@ -149,6 +212,16 @@ def _character_eye_art() -> Image.Image:
     draw.ellipse((55, 35, 210, 190), fill=(230, 70, 145, 255), outline=(15, 15, 15, 255), width=6)
     draw.ellipse((118, 100, 154, 138), fill=(15, 15, 15, 255))
     draw.ellipse((128, 112, 143, 128), fill=(255, 255, 255, 255))
+    return img
+
+
+def _mixed_status_art() -> Image.Image:
+    img = _black_line_residue_art()
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((25, 175, 45, 190), fill=(250, 250, 250, 255))
+    draw.rectangle((28, 178, 45, 182), fill=(15, 15, 15, 255))
+    draw.rounded_rectangle((140, 160, 240, 210), radius=12, fill=(230, 55, 150, 255), outline=(15, 15, 15, 255), width=4)
+    draw.ellipse((168, 174, 226, 202), fill=(255, 255, 255, 255))
     return img
 
 
