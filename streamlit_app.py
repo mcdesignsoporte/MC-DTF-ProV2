@@ -146,7 +146,7 @@ if uploaded and recommended_mode_name and st.session_state.get("last_upload_name
     st.session_state["selected_mode"] = recommended_mode_name
     st.session_state["last_upload_name"] = uploaded.name
 
-options = render_sidebar(st.session_state["selected_mode"])
+options = render_sidebar(st.session_state["selected_mode"], original)
 mode_name = options.mode_name
 mode = options.mode
 

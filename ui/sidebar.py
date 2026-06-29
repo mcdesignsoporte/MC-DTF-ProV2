@@ -3,11 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import streamlit as st
+from PIL import Image, ImageDraw
 
 from core.constants import DEFAULT_DPI
 from core.manual_white_region import parse_seed_text
 from core.modes import MODES
 from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
+
+try:
+    from streamlit_image_coordinates import streamlit_image_coordinates
+except ImportError:
+    streamlit_image_coordinates = None
+
+
+CLICK_SELECTION_METHOD = "Seleccionar con clic"
+MANUAL_COORDINATES_METHOD = "Ingresar coordenadas manualmente"
+MANUAL_WHITE_PENDING_CLICK_KEY = "manual_white_pending_click"
+MANUAL_WHITE_SEED_KEY = "manual_white_selected_seed"
+MANUAL_WHITE_METHOD_KEY = "manual_white_method"
 
 
 @dataclass(frozen=True)
@@ -184,7 +197,7 @@ def render_mode_picker(selected_mode: str) -> tuple[str, dict[str, object]]:
     return mode_key, mode
 
 
-def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
+def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image | None = None) -> dict[str, object]:
     with st.expander("Configuración avanzada", expanded=False):
         col_a, col_b, col_c = st.columns(3)
 
@@ -323,21 +336,108 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
 
         st.subheader("Borrar zona blanca manual")
         manual_white_enabled = st.checkbox("Activar herramienta manual", value=False)
-        manual_white_x = st.number_input("Coordenada X", min_value=0, value=0, step=1)
-        manual_white_y = st.number_input("Coordenada Y", min_value=0, value=0, step=1)
-        manual_white_seed_text = st.text_input("Varias semillas", value="", placeholder="x1,y1; x2,y2")
+        selection_methods = [CLICK_SELECTION_METHOD, MANUAL_COORDINATES_METHOD]
+        manual_white_method = st.radio("Metodo de seleccion", selection_methods, index=0, key=MANUAL_WHITE_METHOD_KEY)
+        if st.session_state.get("manual_white_last_method") != manual_white_method:
+            st.session_state.pop(MANUAL_WHITE_PENDING_CLICK_KEY, None)
+            st.session_state.pop(MANUAL_WHITE_SEED_KEY, None)
+            st.session_state["manual_white_last_method"] = manual_white_method
+
+        selected_seed = st.session_state.get(MANUAL_WHITE_SEED_KEY)
+        if not (isinstance(selected_seed, tuple) and len(selected_seed) == 2):
+            selected_seed = None
+
+        manual_white_x: int | None = None
+        manual_white_y: int | None = None
+        manual_white_seed_text = ""
+        use_manual_inputs = manual_white_method == MANUAL_COORDINATES_METHOD
+        if manual_white_method == CLICK_SELECTION_METHOD and streamlit_image_coordinates is None:
+            st.warning("Selector por clic no disponible. Usa coordenadas manuales.")
+            use_manual_inputs = True
+
+        if manual_white_enabled and manual_white_method == CLICK_SELECTION_METHOD and not use_manual_inputs:
+            if manual_white_image is None:
+                st.info("Sube una imagen para usar seleccion por clic.")
+            else:
+                click_image = manual_white_image.convert("RGBA").copy()
+                display_width = min(520, click_image.width)
+                display_height = max(1, int(round(click_image.height * display_width / max(1, click_image.width))))
+                pending_click = st.session_state.get(MANUAL_WHITE_PENDING_CLICK_KEY)
+                if isinstance(pending_click, dict) and isinstance(pending_click.get("real"), tuple):
+                    marker_x, marker_y = pending_click["real"]
+                    draw = ImageDraw.Draw(click_image)
+                    draw.ellipse((marker_x - 7, marker_y - 7, marker_x + 7, marker_y + 7), outline=(255, 0, 0, 255), width=4)
+                    draw.line((marker_x - 11, marker_y, marker_x + 11, marker_y), fill=(255, 0, 0, 255), width=3)
+                    draw.line((marker_x, marker_y - 11, marker_x, marker_y + 11), fill=(255, 0, 0, 255), width=3)
+                click_value = streamlit_image_coordinates(click_image, key="manual_white_click_selector", width=display_width)
+                if (
+                    isinstance(click_value, dict)
+                    and isinstance(click_value.get("x"), (int, float))
+                    and isinstance(click_value.get("y"), (int, float))
+                ):
+                    visual_x = int(round(float(click_value["x"])))
+                    visual_y = int(round(float(click_value["y"])))
+                    if 0 <= visual_x < display_width and 0 <= visual_y < display_height:
+                        real_x = max(0, min(click_image.width - 1, int(round(visual_x * click_image.width / display_width))))
+                        real_y = max(0, min(click_image.height - 1, int(round(visual_y * click_image.height / display_height))))
+                        st.session_state[MANUAL_WHITE_PENDING_CLICK_KEY] = {
+                            "visual": (visual_x, visual_y),
+                            "real": (real_x, real_y),
+                            "display_size": (display_width, display_height),
+                            "real_size": click_image.size,
+                        }
+
+                pending_click = st.session_state.get(MANUAL_WHITE_PENDING_CLICK_KEY)
+                if isinstance(pending_click, dict) and isinstance(pending_click.get("real"), tuple):
+                    visual = pending_click["visual"]
+                    real = pending_click["real"]
+                    display_size = pending_click["display_size"]
+                    real_size = pending_click["real_size"]
+                    marker_preview = manual_white_image.convert("RGBA").copy()
+                    marker_draw = ImageDraw.Draw(marker_preview)
+                    marker_draw.ellipse((real[0] - 7, real[1] - 7, real[0] + 7, real[1] + 7), outline=(255, 0, 0, 255), width=4)
+                    marker_draw.line((real[0] - 11, real[1], real[0] + 11, real[1]), fill=(255, 0, 0, 255), width=3)
+                    marker_draw.line((real[0], real[1] - 11, real[0], real[1] + 11), fill=(255, 0, 0, 255), width=3)
+                    st.image(marker_preview, caption="Marcador de clic capturado", width=display_size[0])
+                    st.caption(f"Último clic: X={real[0]}, Y={real[1]}")
+                    st.caption(f"Tamaño mostrado: {display_size[0]} x {display_size[1]} px | Tamaño real: {real_size[0]} x {real_size[1]} px")
+                    st.caption(f"Coordenada visual: ({visual[0]}, {visual[1]}) | Coordenada real: ({real[0]}, {real[1]})")
+                    if st.button("Usar este clic como semilla"):
+                        st.session_state[MANUAL_WHITE_SEED_KEY] = real
+                        selected_seed = real
+                else:
+                    st.info("Haz clic sobre una zona blanca residual para seleccionar una región.")
+
+        if manual_white_enabled and use_manual_inputs:
+            max_x = max(0, manual_white_image.width - 1) if manual_white_image is not None else None
+            max_y = max(0, manual_white_image.height - 1) if manual_white_image is not None else None
+            manual_white_x = st.number_input("Coordenada X", min_value=0, max_value=max_x, value=0, step=1)
+            manual_white_y = st.number_input("Coordenada Y", min_value=0, max_value=max_y, value=0, step=1)
+            if st.button("Usar coordenadas manuales como semilla"):
+                st.session_state[MANUAL_WHITE_SEED_KEY] = (int(manual_white_x), int(manual_white_y))
+                selected_seed = st.session_state[MANUAL_WHITE_SEED_KEY]
+            manual_white_seed_text = st.text_input("Varias semillas", value="", placeholder="x1,y1; x2,y2")
+
         manual_white_tolerance = st.slider("Tolerancia seleccion", 4, 120, 42)
         manual_white_luminosity = st.slider("Luminosidad manual minima", 120, 255, 190)
         manual_white_saturation = st.slider("Saturacion manual maxima", 0, 140, 90)
         manual_white_max_area = st.number_input("Area maxima permitida", min_value=10, max_value=500000, value=50000, step=100)
         manual_white_connectivity = st.selectbox("Conectividad", [4, 8], index=1)
-        st.caption(f"Accion actual: {st.session_state.get('manual_white_action', 'preview')}")
-        if st.button("Previsualizar region"):
+        manual_white_seeds = _manual_seeds(manual_white_x, manual_white_y, manual_white_seed_text, selected_seed=selected_seed)
+        if manual_white_enabled and not manual_white_seeds:
             st.session_state["manual_white_action"] = "preview"
-        if st.button("Borrar region seleccionada"):
+            st.info("Haz clic sobre una zona blanca residual para seleccionar una región.")
+        if selected_seed is not None:
+            st.success(f"Semilla activa: X={selected_seed[0]}, Y={selected_seed[1]}")
+        st.caption(f"Accion actual: {st.session_state.get('manual_white_action', 'preview')}")
+        if st.button("Previsualizar región", disabled=not bool(manual_white_seeds)):
+            st.session_state["manual_white_action"] = "preview"
+        if st.button("Borrar región seleccionada", disabled=not bool(manual_white_seeds)):
             st.session_state["manual_white_action"] = "apply"
         if st.button("Restablecer borrado manual"):
             st.session_state["manual_white_action"] = "reset"
+            st.session_state.pop(MANUAL_WHITE_PENDING_CLICK_KEY, None)
+            st.session_state.pop(MANUAL_WHITE_SEED_KEY, None)
 
     return {
         "alpha_cut": alpha_cut,
@@ -397,7 +497,7 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
         "internal_residue_auto_remove": internal_residue_auto_remove,
         "internal_residue_manual_ids": _parse_component_ids(internal_residue_manual_text),
         "manual_white_enabled": manual_white_enabled,
-        "manual_white_seeds": _manual_seeds(int(manual_white_x), int(manual_white_y), manual_white_seed_text),
+        "manual_white_seeds": manual_white_seeds,
         "manual_white_tolerance": manual_white_tolerance,
         "manual_white_luminosity": manual_white_luminosity,
         "manual_white_saturation": manual_white_saturation,
@@ -407,10 +507,10 @@ def _advanced_controls(mode: dict[str, object]) -> dict[str, object]:
     }
 
 
-def render_sidebar(selected_mode: str) -> ProcessingOptions:
+def render_sidebar(selected_mode: str, manual_white_image: Image.Image | None = None) -> ProcessingOptions:
     """Render compact commercial controls with expert options hidden."""
     mode_name, mode = render_mode_picker(selected_mode)
-    controls = _advanced_controls(mode)
+    controls = _advanced_controls(mode, manual_white_image)
 
     with st.sidebar:
         st.header("Salida")
@@ -539,8 +639,34 @@ def _parse_component_ids(raw: str) -> tuple[int, ...]:
     return tuple(sorted(set(values)))
 
 
-def _manual_seeds(x: int, y: int, raw: str) -> tuple[tuple[int, int], ...]:
+def _manual_seeds(
+    x: int | None,
+    y: int | None,
+    raw: str,
+    selected_seed: tuple[int, int] | None = None,
+    click_data: dict[str, object] | None = None,
+    image_size: tuple[int, int] | None = None,
+    display_size: tuple[int, int] | None = None,
+    include_manual: bool = False,
+) -> tuple[tuple[int, int], ...]:
     seeds = list(parse_seed_text(raw))
-    if not seeds:
+    if selected_seed is not None:
+        seeds.append((int(selected_seed[0]), int(selected_seed[1])))
+    if (
+        click_data is not None
+        and image_size is not None
+        and display_size is not None
+        and isinstance(click_data.get("x"), (int, float))
+        and isinstance(click_data.get("y"), (int, float))
+        and display_size[0] > 0
+        and display_size[1] > 0
+    ):
+        visual_x = int(round(float(click_data["x"])))
+        visual_y = int(round(float(click_data["y"])))
+        if 0 <= visual_x < display_size[0] and 0 <= visual_y < display_size[1]:
+            real_x = int(round(visual_x * image_size[0] / display_size[0]))
+            real_y = int(round(visual_y * image_size[1] / display_size[1]))
+            seeds.append((max(0, min(image_size[0] - 1, real_x)), max(0, min(image_size[1] - 1, real_y))))
+    if include_manual and x is not None and y is not None:
         seeds.append((x, y))
     return tuple(dict.fromkeys(seeds))

@@ -125,6 +125,34 @@ class ManualWhiteRegionTests(unittest.TestCase):
 
         self.assertIsNone(payload["complex_white_debug"])
 
+    def test_manual_apply_without_seed_does_not_change_alpha(self) -> None:
+        settings = replace(
+            _pipeline_settings(),
+            manual_white_enabled=True,
+            manual_white_seeds=(),
+            manual_white_action="apply",
+        )
+        img = _manual_artwork()
+
+        payload = process_artwork(img, {"type": "Fondo blanco complejo"}, settings)
+
+        self.assertEqual(_alpha_at(img, 42, 42), _alpha_at(payload["image"], 42, 42))
+        self.assertEqual([], payload["complex_white_debug"]["manual_white"]["stats"]["seeds"])
+
+    def test_manual_preview_without_seed_has_no_selected_regions(self) -> None:
+        settings = replace(
+            _pipeline_settings(),
+            manual_white_enabled=True,
+            manual_white_seeds=(),
+            manual_white_action="preview",
+        )
+
+        payload = process_artwork(_manual_artwork(), {"type": "Fondo blanco complejo"}, settings)
+        manual = payload["complex_white_debug"]["manual_white"]
+
+        self.assertEqual(0, manual["stats"]["applied_count"])
+        self.assertEqual([], manual["components"])
+
 
 def _manual_settings() -> ManualWhiteRegionSettings:
     return ManualWhiteRegionSettings(

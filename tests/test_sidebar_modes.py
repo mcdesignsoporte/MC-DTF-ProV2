@@ -1,7 +1,7 @@
 import unittest
 
 from core.modes import MODES
-from ui.sidebar import LABEL_TO_MODE, MODE_TO_LABEL, _label_from_mode, _safe_mode_name
+from ui.sidebar import LABEL_TO_MODE, MODE_TO_LABEL, _label_from_mode, _manual_seeds, _safe_mode_name
 
 
 EXPECTED_LABEL_TO_MODE = {
@@ -65,6 +65,28 @@ class SidebarModeMappingTests(unittest.TestCase):
         self.assertEqual("Automatico", _safe_mode_name("Automático"))
         self.assertEqual("Quitar Fondo Negro", _safe_mode_name("Fondo negro"))
         self.assertEqual("Diseno Oscuro", _safe_mode_name("Diseño oscuro"))
+
+    def test_manual_white_does_not_default_to_zero_zero_without_click(self) -> None:
+        self.assertEqual((), _manual_seeds(0, 0, ""))
+
+    def test_manual_white_valid_click_scales_to_real_coordinates(self) -> None:
+        seeds = _manual_seeds(
+            None,
+            None,
+            "",
+            click_data={"x": 21, "y": 21},
+            display_size=(90, 75),
+            image_size=(180, 150),
+        )
+
+        self.assertEqual(((42, 42),), seeds)
+
+    def test_manual_white_manual_fallback_requires_explicit_confirmation(self) -> None:
+        self.assertEqual((), _manual_seeds(42, 42, ""))
+        self.assertEqual(((42, 42),), _manual_seeds(42, 42, "", include_manual=True))
+
+    def test_manual_white_selected_seed_is_used_for_preview_actions(self) -> None:
+        self.assertEqual(((82, 102),), _manual_seeds(None, None, "", selected_seed=(82, 102)))
 
 
 if __name__ == "__main__":
