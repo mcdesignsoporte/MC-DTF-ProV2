@@ -6,6 +6,7 @@ import streamlit as st
 from PIL import Image, ImageDraw
 
 from core.constants import DEFAULT_DPI
+from ui.manual_white import parse_manual_seed_inputs, scale_click_to_image_coordinates
 from core.manual_white_region import parse_seed_text
 from core.modes import MODES
 from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
@@ -377,15 +378,23 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
                 ):
                     visual_x = int(round(float(click_value["x"])))
                     visual_y = int(round(float(click_value["y"])))
-                    if 0 <= visual_x < display_width and 0 <= visual_y < display_height:
-                        real_x = max(0, min(click_image.width - 1, int(round(visual_x * click_image.width / display_width))))
-                        real_y = max(0, min(click_image.height - 1, int(round(visual_y * click_image.height / display_height))))
+                    scaled = scale_click_to_image_coordinates(
+                        visual_x,
+                        visual_y,
+                        (display_width, display_height),
+                        click_image.size,
+                        reject_origin=True,
+                    )
+                    if scaled.seed is not None:
+                        real_x, real_y = scaled.seed
                         st.session_state[MANUAL_WHITE_PENDING_CLICK_KEY] = {
                             "visual": (visual_x, visual_y),
                             "real": (real_x, real_y),
                             "display_size": (display_width, display_height),
                             "real_size": click_image.size,
                         }
+                    elif scaled.reason == "clic_no_confirmado":
+                        st.session_state.pop(MANUAL_WHITE_PENDING_CLICK_KEY, None)
 
                 pending_click = st.session_state.get(MANUAL_WHITE_PENDING_CLICK_KEY)
                 if isinstance(pending_click, dict) and isinstance(pending_click.get("real"), tuple):
@@ -409,12 +418,21 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
                     st.info("Haz clic sobre una zona blanca residual para seleccionar una región.")
 
         if manual_white_enabled and use_manual_inputs:
-            max_x = max(0, manual_white_image.width - 1) if manual_white_image is not None else None
-            max_y = max(0, manual_white_image.height - 1) if manual_white_image is not None else None
-            manual_white_x = st.number_input("Coordenada X", min_value=0, max_value=max_x, value=0, step=1)
-            manual_white_y = st.number_input("Coordenada Y", min_value=0, max_value=max_y, value=0, step=1)
-            if st.button("Usar coordenadas manuales como semilla"):
-                st.session_state[MANUAL_WHITE_SEED_KEY] = (int(manual_white_x), int(manual_white_y))
+            image_size = manual_white_image.size if manual_white_image is not None else None
+            st.caption("Ingresa coordenadas reales o usa selección con clic. No se usará (0,0) por defecto.")
+            manual_white_x_text = st.text_input("Coordenada X", value="", placeholder="Ejemplo: 245")
+            manual_white_y_text = st.text_input("Coordenada Y", value="", placeholder="Ejemplo: 310")
+            allow_origin = st.checkbox("Permitir esquina superior izquierda (0,0)", value=False)
+            parsed_manual = parse_manual_seed_inputs(
+                manual_white_x_text,
+                manual_white_y_text,
+                image_size,
+                allow_origin=allow_origin,
+            )
+            if parsed_manual.reason and parsed_manual.reason not in {"coordenadas_vacias"}:
+                st.warning(f"Coordenadas manuales no usadas: {parsed_manual.reason}")
+            if st.button("Usar coordenadas manuales como semilla", disabled=parsed_manual.seed is None):
+                st.session_state[MANUAL_WHITE_SEED_KEY] = parsed_manual.seed
                 selected_seed = st.session_state[MANUAL_WHITE_SEED_KEY]
             manual_white_seed_text = st.text_input("Varias semillas", value="", placeholder="x1,y1; x2,y2")
 
@@ -429,6 +447,8 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
             st.info("Haz clic sobre una zona blanca residual para seleccionar una región.")
         if selected_seed is not None:
             st.success(f"Semilla activa: X={selected_seed[0]}, Y={selected_seed[1]}")
+        else:
+            st.caption("Sin semilla activa")
         st.caption(f"Accion actual: {st.session_state.get('manual_white_action', 'preview')}")
         if st.button("Previsualizar región", disabled=not bool(manual_white_seeds)):
             st.session_state["manual_white_action"] = "preview"
@@ -651,7 +671,9 @@ def _manual_seeds(
 ) -> tuple[tuple[int, int], ...]:
     seeds = list(parse_seed_text(raw))
     if selected_seed is not None:
-        seeds.append((int(selected_seed[0]), int(selected_seed[1])))
+        sx, sy = int(selected_seed[0]), int(selected_seed[1])
+        if not (sx == 0 and sy == 0):
+            seeds.append((sx, sy))
     if (
         click_data is not None
         and image_size is not None
@@ -661,12 +683,17 @@ def _manual_seeds(
         and display_size[0] > 0
         and display_size[1] > 0
     ):
-        visual_x = int(round(float(click_data["x"])))
-        visual_y = int(round(float(click_data["y"])))
-        if 0 <= visual_x < display_size[0] and 0 <= visual_y < display_size[1]:
-            real_x = int(round(visual_x * image_size[0] / display_size[0]))
-            real_y = int(round(visual_y * image_size[1] / display_size[1]))
-            seeds.append((max(0, min(image_size[0] - 1, real_x)), max(0, min(image_size[1] - 1, real_y))))
+        scaled = scale_click_to_image_coordinates(
+            click_data["x"],
+            click_data["y"],
+            display_size,
+            image_size,
+            reject_origin=True,
+        )
+        if scaled.seed is not None:
+            seeds.append(scaled.seed)
     if include_manual and x is not None and y is not None:
-        seeds.append((x, y))
+        mx, my = int(x), int(y)
+        if not (mx == 0 and my == 0):
+            seeds.append((mx, my))
     return tuple(dict.fromkeys(seeds))
