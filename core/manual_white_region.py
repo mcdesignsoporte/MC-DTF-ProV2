@@ -137,8 +137,15 @@ def parse_seed_text(raw: str) -> tuple[tuple[int, int], ...]:
 
 
 def selected_region_mask_image(selections: list[ManualWhiteRegionSelection]) -> Image.Image | None:
-    """Build an RGBA mask image for selected manual regions."""
+    """Build an RGBA mask image for selected manual regions.
+
+    Empty selections or selections whose masks contain no pixels should not render
+    as a blank checkerboard in the UI. Returning None forces the caller to show
+    the rejection reason instead of a misleading empty preview.
+    """
     if not selections:
+        return None
+    if not any(int(selection.mask.sum()) > 0 for selection in selections):
         return None
     h, w = selections[0].mask.shape
     out = np.zeros((h, w, 4), dtype=np.uint8)

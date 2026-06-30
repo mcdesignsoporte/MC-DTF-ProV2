@@ -404,6 +404,13 @@ def render_residue_debug(debug: dict[str, object]) -> None:
         if image is not None:
             st.caption(label)
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
+        elif key == "selected_region":
+            stats = dict(debug.get("stats") or {})
+            rejected = stats.get("rejected_reasons", [])
+            if rejected:
+                st.warning(f"No se detectó una región blanca válida en este punto: {rejected}")
+            elif stats.get("seeds"):
+                st.warning("No se detectó una región blanca válida en este punto.")
     components = list(debug.get("components") or [])
     if components:
         st.dataframe(components, use_container_width=True, hide_index=True)
@@ -438,6 +445,13 @@ def render_internal_residue_debug(debug: dict[str, object]) -> None:
         if image is not None:
             st.caption(label)
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
+        elif key == "selected_region":
+            stats = dict(debug.get("stats") or {})
+            rejected = stats.get("rejected_reasons", [])
+            if rejected:
+                st.warning(f"No se detectó una región blanca válida en este punto: {rejected}")
+            elif stats.get("seeds"):
+                st.warning("No se detectó una región blanca válida en este punto.")
     components = list(debug.get("components") or [])
     if components:
         st.dataframe(components, use_container_width=True, hide_index=True)
@@ -486,6 +500,13 @@ def render_manual_white_debug(debug: dict[str, object]) -> None:
         if image is not None:
             st.caption(label)
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
+        elif key == "selected_region":
+            stats = dict(debug.get("stats") or {})
+            rejected = stats.get("rejected_reasons", [])
+            if rejected:
+                st.warning(f"No se detectó una región blanca válida en este punto: {rejected}")
+            elif stats.get("seeds"):
+                st.warning("No se detectó una región blanca válida en este punto.")
     components = list(debug.get("components") or [])
     if components:
         st.dataframe(components, use_container_width=True, hide_index=True)
