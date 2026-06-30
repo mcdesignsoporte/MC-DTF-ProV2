@@ -3,6 +3,6 @@ streamlit-image-coordinates
 pillow==11.1.0
 numpy==2.2.1
 opencv-python-headless==4.10.0.84
-onnxruntime==1.20.1
-rembg==2.0.61
+onnxruntime>=1.21.0
+rembg[cpu]>=2.0.62,<3.0
 scikit-image==0.25.0

@@ -21,6 +21,7 @@ from core.manual_white_region import (
 from core.modes import MODES
 from core.pipeline import PipelineSettings, process_artwork
 from core.presets import preset_for_mode
+from core.production_dtf import clean_for_production
 from core.preview import composite_preview
 from core.constants import SUPPORTED_FORMATS
 from core.version import AUTHOR, NAME, VERSION
@@ -125,6 +126,8 @@ def current_settings(mode: dict[str, object], options) -> PipelineSettings:
         manual_white_max_area=options.manual_white_max_area,
         manual_white_connectivity=options.manual_white_connectivity,
         manual_white_action=options.manual_white_action,
+        production_dtf_enabled=options.production_dtf_action == "clean",
+        production_dtf_preset=options.production_dtf_preset,
     )
 
 
@@ -223,13 +226,24 @@ def _update_manual_white_preview_and_result(options) -> None:
         return
 
     action = str(getattr(options, "manual_white_action", "preview") or "preview")
-    if action not in {"preview", "apply", "reset"}:
+    if action not in {"preview", "apply", "reset", "undo"}:
         action = "preview"
 
     base_img = st.session_state.get("manual_white_base_img")
     if base_img is None:
         st.session_state["manual_white_base_img"] = st.session_state["result_img"].copy()
         base_img = st.session_state["manual_white_base_img"]
+
+    if action == "undo":
+        last_img = st.session_state.get("manual_white_last_img")
+        if last_img is not None:
+            st.session_state["result_img"] = last_img.copy()
+            exports = build_export_package(st.session_state["result_img"], dpi=options.dpi, mode=str(mode["key"]), original=original)
+            st.session_state["result_png"] = exports["png"]
+            st.session_state["result_pdf"] = exports["pdf"]
+            st.session_state["result_zip"] = exports["zip"]
+        st.session_state["manual_white_action"] = "preview"
+        return
 
     if action == "reset":
         st.session_state["result_img"] = base_img.copy()
@@ -251,6 +265,7 @@ def _update_manual_white_preview_and_result(options) -> None:
     source_img = st.session_state["result_img"].convert("RGBA")
 
     if action == "apply":
+        st.session_state["manual_white_last_img"] = source_img.copy()
         updated, selections = remove_light_region_by_seed(source_img, options.manual_white_seeds, settings)
         st.session_state["result_img"] = updated
         exports = build_export_package(updated, dpi=options.dpi, mode=str(mode["key"]), original=original)
@@ -265,6 +280,35 @@ def _update_manual_white_preview_and_result(options) -> None:
     complex_debug = dict(st.session_state.get("complex_white_debug") or {})
     complex_debug["manual_white"] = _manual_white_debug_payload(source_img, st.session_state["result_img"], selections)
     st.session_state["complex_white_debug"] = complex_debug
+
+
+def _apply_production_cleanup_if_requested(options) -> None:
+    """Apply one-click production cleanup to the current result image."""
+    action = str(getattr(options, "production_dtf_action", "idle") or "idle")
+    if action not in {"clean", "detect"}:
+        return
+    if "result_img" not in st.session_state:
+        st.info("Procesa una imagen antes de usar Limpiar para producción.")
+        st.session_state["production_dtf_action"] = "idle"
+        return
+
+    source_img = st.session_state["result_img"].convert("RGBA")
+    st.session_state["production_dtf_undo_img"] = source_img.copy()
+    preset_name = "Solo detectar" if action == "detect" else options.production_dtf_preset
+    production_result = clean_for_production(source_img, preset_name)
+    if action == "clean":
+        st.session_state["result_img"] = production_result.image
+        exports = build_export_package(production_result.image, dpi=options.dpi, mode=str(mode["key"]), original=original)
+        st.session_state["result_png"] = exports["png"]
+        st.session_state["result_pdf"] = exports["pdf"]
+        st.session_state["result_zip"] = exports["zip"]
+
+    complex_debug = dict(st.session_state.get("complex_white_debug") or {})
+    complex_debug["production_dtf"] = production_result.debug["production"]
+    complex_debug["production_residue"] = production_result.debug["residue"]
+    complex_debug["production_internal_residue"] = production_result.debug["internal_residue"]
+    st.session_state["complex_white_debug"] = complex_debug
+    st.session_state["production_dtf_action"] = "idle"
 
 
 if st.button("Procesar imagen", type="primary", use_container_width=True):
@@ -302,6 +346,7 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         st.session_state["logo_palette"] = result_payload.get("logo_palette")
         st.session_state["logo_layers"] = result_payload.get("logo_layers")
         st.session_state["complex_white_debug"] = result_payload.get("complex_white_debug")
+        st.session_state["ai_background_debug"] = result_payload.get("ai_background_debug")
         st.session_state["autopilot"] = result_payload.get("autopilot")
         st.session_state["autopilot_quality"] = result_payload.get("autopilot_quality")
         extra_files = dict(result_payload.get("dtf_extra_files") or {})
@@ -372,6 +417,7 @@ if "batch_rows" in st.session_state:
 
 if "result_img" in st.session_state:
     _update_manual_white_preview_and_result(options)
+    _apply_production_cleanup_if_requested(options)
     st.divider()
     st.subheader("Resultado")
     render_result_workspace(
@@ -401,6 +447,7 @@ if "result_img" in st.session_state:
         st.session_state.get("logo_palette"),
         st.session_state.get("logo_layers"),
         st.session_state.get("complex_white_debug"),
+        st.session_state.get("ai_background_debug"),
         st.session_state.get("autopilot"),
         st.session_state.get("autopilot_quality"),
     )
