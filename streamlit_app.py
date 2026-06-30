@@ -10,6 +10,14 @@ from core.detector import detect
 from core.export import build_export_package
 from core.halftone import make_halftone
 from core.image_io import image_to_pdf_bytes, image_to_png_bytes, load_uploaded_image
+from core.manual_white_region import (
+    ManualWhiteRegionSettings,
+    remove_light_region_by_seed,
+    select_light_region_by_seed,
+    selected_region_mask_image,
+    preview_selected_region_overlay,
+    manual_white_region_report_json,
+)
 from core.modes import MODES
 from core.pipeline import PipelineSettings, process_artwork
 from core.presets import preset_for_mode
@@ -146,7 +154,8 @@ if uploaded and recommended_mode_name and st.session_state.get("last_upload_name
     st.session_state["selected_mode"] = recommended_mode_name
     st.session_state["last_upload_name"] = uploaded.name
 
-options = render_sidebar(st.session_state["selected_mode"], original)
+manual_white_reference = st.session_state.get("result_img") if "result_img" in st.session_state else original
+options = render_sidebar(st.session_state["selected_mode"], manual_white_reference)
 mode_name = options.mode_name
 mode = options.mode
 
@@ -180,6 +189,84 @@ def process_image(original_img, detection: dict[str, object], filename: str = "i
     return process_artwork(original_img, detection, settings or current_settings(mode, options), session_factory=cached_session, prefix=filename)
 
 
+def _manual_white_debug_payload(source_img, result_img, selections):
+    mask = selected_region_mask_image(selections)
+    report = {
+        "regions": [selection.report() for selection in selections],
+        "applied_count": sum(1 for selection in selections if selection.decision == "aplicado"),
+        "rejected_count": sum(1 for selection in selections if selection.decision != "aplicado"),
+        "applied_area": sum(selection.area for selection in selections if selection.decision == "aplicado"),
+        "rejected_reasons": [selection.reason for selection in selections if selection.decision != "aplicado"],
+        "seeds": [selection.seed for selection in selections],
+    }
+    return {
+        "stats": report,
+        "components": report["regions"],
+        "previews": {
+            "selected_region": mask,
+            "region_overlay": preview_selected_region_overlay(source_img, selections) if selections else None,
+            "region_removed": result_img,
+        },
+        "report_json": manual_white_region_report_json(selections),
+    }
+
+
+def _update_manual_white_preview_and_result(options) -> None:
+    """Apply or preview manual white-region cleanup on the current result.
+
+    This closes the Streamlit integration loop: click/seed -> preview -> confirm ->
+    updated result/export. Re-running the main processing button is not required.
+    """
+    if "result_img" not in st.session_state:
+        return
+    if not options.manual_white_enabled or not options.manual_white_seeds:
+        return
+
+    action = str(getattr(options, "manual_white_action", "preview") or "preview")
+    if action not in {"preview", "apply", "reset"}:
+        action = "preview"
+
+    base_img = st.session_state.get("manual_white_base_img")
+    if base_img is None:
+        st.session_state["manual_white_base_img"] = st.session_state["result_img"].copy()
+        base_img = st.session_state["manual_white_base_img"]
+
+    if action == "reset":
+        st.session_state["result_img"] = base_img.copy()
+        exports = build_export_package(st.session_state["result_img"], dpi=options.dpi, mode=str(mode["key"]), original=original)
+        st.session_state["result_png"] = exports["png"]
+        st.session_state["result_pdf"] = exports["pdf"]
+        st.session_state["result_zip"] = exports["zip"]
+        st.session_state.setdefault("complex_white_debug", {})["manual_white"] = _manual_white_debug_payload(st.session_state["result_img"], st.session_state["result_img"], [])
+        st.session_state["manual_white_action"] = "preview"
+        return
+
+    settings = ManualWhiteRegionSettings(
+        tolerance=options.manual_white_tolerance,
+        luminosity_min=options.manual_white_luminosity,
+        saturation_max=options.manual_white_saturation,
+        max_area=options.manual_white_max_area,
+        connectivity=options.manual_white_connectivity,
+    )
+    source_img = st.session_state["result_img"].convert("RGBA")
+
+    if action == "apply":
+        updated, selections = remove_light_region_by_seed(source_img, options.manual_white_seeds, settings)
+        st.session_state["result_img"] = updated
+        exports = build_export_package(updated, dpi=options.dpi, mode=str(mode["key"]), original=original)
+        st.session_state["result_png"] = exports["png"]
+        st.session_state["result_pdf"] = exports["pdf"]
+        st.session_state["result_zip"] = exports["zip"]
+        st.session_state["manual_white_action"] = "preview"
+    else:
+        selections = [select_light_region_by_seed(source_img, seed, settings) for seed in options.manual_white_seeds]
+        updated = source_img
+
+    complex_debug = dict(st.session_state.get("complex_white_debug") or {})
+    complex_debug["manual_white"] = _manual_white_debug_payload(source_img, st.session_state["result_img"], selections)
+    st.session_state["complex_white_debug"] = complex_debug
+
+
 if st.button("Procesar imagen", type="primary", use_container_width=True):
     progress = st.progress(0)
     log = st.empty()
@@ -192,6 +279,7 @@ if st.button("Procesar imagen", type="primary", use_container_width=True):
         work = result_payload["image"]
         st.session_state["original_img"] = original.copy()
         st.session_state["result_img"] = work
+        st.session_state["manual_white_base_img"] = work.copy()
         st.session_state["white_protection"] = result_payload.get("white_protection")
         st.session_state["white_mask"] = result_payload.get("white_mask")
         st.session_state["fine_detail_protection"] = result_payload.get("fine_detail_protection")
@@ -283,6 +371,7 @@ if "batch_rows" in st.session_state:
     render_batch_table(st.session_state["batch_rows"])
 
 if "result_img" in st.session_state:
+    _update_manual_white_preview_and_result(options)
     st.divider()
     st.subheader("Resultado")
     render_result_workspace(
