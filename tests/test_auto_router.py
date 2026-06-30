@@ -25,23 +25,23 @@ class AutoPilotRouterTests(unittest.TestCase):
         decision = autopilot_route(_complex_white_artwork())
 
         self.assertEqual("white_background_complex", decision["case_type"])
-        self.assertEqual("complex_white_bg", decision["recommended_mode"])
+        self.assertEqual("ai_background", decision["recommended_mode"])
         self.assertEqual("red", decision["traffic_light"])
 
     def test_pink_panther_detector_payload_routes_to_complex_white(self) -> None:
         decision = autopilot_route(Image.new("RGBA", (1200, 1600), (240, 240, 240, 255)), _pink_panther_detection())
 
         self.assertEqual("white_background_complex", decision["case_type"])
-        self.assertEqual("complex_white_bg", decision["recommended_mode"])
+        self.assertEqual("ai_background", decision["recommended_mode"])
         self.assertEqual("red", decision["traffic_light"])
         self.assertTrue(decision["needs_manual_review"])
-        self.assertIn("Fondo blanco complejo", str(decision["suggested_next_step"]))
+        self.assertIn("Recorte IA", str(decision["suggested_next_step"]))
 
     def test_near_white_complex_synthetic_routes_to_complex_white(self) -> None:
         decision = autopilot_route(_near_white_complex_artwork())
 
         self.assertEqual("white_background_complex", decision["case_type"])
-        self.assertEqual("complex_white_bg", decision["recommended_mode"])
+        self.assertEqual("ai_background", decision["recommended_mode"])
         self.assertEqual("red", decision["traffic_light"])
 
     def test_black_background_routes_to_black_bg(self) -> None:
@@ -71,8 +71,8 @@ class AutoPilotRouterTests(unittest.TestCase):
     def test_auto_pipeline_uses_autopilot_for_complex_white(self) -> None:
         payload = process_artwork(_complex_white_artwork(), {}, _auto_settings())
 
-        self.assertEqual("complex_white_bg", payload["autopilot"]["recommended_mode"])
-        self.assertIsNotNone(payload["complex_white_debug"])
+        self.assertEqual("ai_background", payload["autopilot"]["recommended_mode"])
+        self.assertIsNotNone(payload["ai_background_debug"])
 
 
 def _transparent_png() -> Image.Image:

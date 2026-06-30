@@ -10,6 +10,7 @@ from ui.manual_white import parse_manual_seed_inputs, scale_click_to_image_coord
 from core.manual_white_region import parse_seed_text
 from core.modes import MODES
 from core.white_complex import COMPLEX_WHITE_PRESETS, complex_white_preset
+from core.production_dtf import production_dtf_preset_names
 
 try:
     from streamlit_image_coordinates import streamlit_image_coordinates
@@ -97,6 +98,9 @@ class ProcessingOptions:
     manual_white_max_area: int
     manual_white_connectivity: int
     manual_white_action: str
+    manual_white_quick_apply: bool
+    production_dtf_preset: str
+    production_dtf_action: str
     max_ai_side: int
     upscale: int
     dpi: int
@@ -118,6 +122,7 @@ LABEL_TO_MODE = {
     "Diseño oscuro": "Diseno Oscuro",
     "Fondo de color": "Fondo de color",
     "Fondo blanco complejo": "Fondo blanco complejo",
+    "Recorte IA": "Recorte IA",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -131,6 +136,7 @@ MODE_TO_LABEL = {
     "Diseno Oscuro": "Diseño oscuro",
     "Fondo de color": "Fondo de color",
     "Fondo blanco complejo": "Fondo blanco complejo",
+    "Recorte IA": "Recorte IA",
     "Preparar DTF": "Preparar DTF",
 }
 
@@ -314,6 +320,18 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
         complex_white_alpha_smoothing = st.selectbox("Suavizado de alpha", smooth_values, index=smooth_values.index(complex_preset.alpha_smoothing), format_func=lambda value: "No" if value == 0 else f"{value} px")
         complex_white_export_debug = st.checkbox("Exportar debug", value=False)
 
+        st.subheader("Modo Producción DTF")
+        production_dtf_preset = st.selectbox("Preset producción", production_dtf_preset_names(), index=1)
+        st.caption("Flujo recomendado: elige preset → Limpiar para producción → revisa verde/negro → exporta o corrige pendientes.")
+        if st.button("Limpiar para producción", use_container_width=True):
+            st.session_state["production_dtf_action"] = "clean"
+        if st.button("Borrar todos los residuos sugeridos", use_container_width=True):
+            st.session_state["production_dtf_action"] = "clean"
+        if st.button("Solo detectar residuos", use_container_width=True):
+            st.session_state["production_dtf_action"] = "detect"
+        production_dtf_action = str(st.session_state.get("production_dtf_action", "idle"))
+        st.caption(f"Acción producción: {production_dtf_action}")
+
         st.subheader("Refinar residuos blancos")
         residue_refine_enabled = st.checkbox("Activar refinamiento", value=False)
         residue_luminosity = st.slider("Luminosidad residuo", 180, 255, 220)
@@ -337,6 +355,7 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
 
         st.subheader("Borrar zona blanca manual")
         manual_white_enabled = st.checkbox("Activar herramienta manual", value=False)
+        manual_white_quick_apply = st.checkbox("Borrar con clic rápido", value=False, help="Si la región es segura, el clic se aplica al confirmar la semilla. Usa Deshacer si no te convence.")
         selection_methods = [CLICK_SELECTION_METHOD, MANUAL_COORDINATES_METHOD]
         manual_white_method = st.radio("Metodo de seleccion", selection_methods, index=0, key=MANUAL_WHITE_METHOD_KEY)
         if st.session_state.get("manual_white_last_method") != manual_white_method:
@@ -414,6 +433,8 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
                     if st.button("Usar este clic como semilla"):
                         st.session_state[MANUAL_WHITE_SEED_KEY] = real
                         selected_seed = real
+                        if manual_white_quick_apply:
+                            st.session_state["manual_white_action"] = "apply"
                 else:
                     st.info("Haz clic sobre una zona blanca residual para seleccionar una región.")
 
@@ -454,6 +475,8 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
             st.session_state["manual_white_action"] = "preview"
         if st.button("Borrar región seleccionada", disabled=not bool(manual_white_seeds)):
             st.session_state["manual_white_action"] = "apply"
+        if st.button("Deshacer último borrado manual"):
+            st.session_state["manual_white_action"] = "undo"
         if st.button("Restablecer borrado manual"):
             st.session_state["manual_white_action"] = "reset"
             st.session_state.pop(MANUAL_WHITE_PENDING_CLICK_KEY, None)
@@ -524,6 +547,9 @@ def _advanced_controls(mode: dict[str, object], manual_white_image: Image.Image 
         "manual_white_max_area": manual_white_max_area,
         "manual_white_connectivity": manual_white_connectivity,
         "manual_white_action": str(st.session_state.get("manual_white_action", "preview")),
+        "manual_white_quick_apply": manual_white_quick_apply,
+        "production_dtf_preset": production_dtf_preset,
+        "production_dtf_action": production_dtf_action,
     }
 
 
@@ -634,6 +660,9 @@ def render_sidebar(selected_mode: str, manual_white_image: Image.Image | None = 
         manual_white_max_area=int(controls["manual_white_max_area"]),
         manual_white_connectivity=int(controls["manual_white_connectivity"]),
         manual_white_action=str(controls["manual_white_action"]),
+        manual_white_quick_apply=bool(controls["manual_white_quick_apply"]),
+        production_dtf_preset=str(controls["production_dtf_preset"]),
+        production_dtf_action=str(controls["production_dtf_action"]),
         max_ai_side=int(controls["max_ai_side"]),
         upscale=int(controls["upscale"]),
         dpi=int(dpi),

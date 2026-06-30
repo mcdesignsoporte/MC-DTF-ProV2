@@ -131,16 +131,20 @@ def _white_case(
     noise: float = 0,
     recommended: str = "",
 ) -> str:
+    # Splash/noise alone is not enough: simple low-resolution art can look
+    # splashy because of hard synthetic edges. Require real complexity signals
+    # before routing to AI.
     complex_score = 0
     complex_score += 2 if edge > 5 else 0
     complex_score += 2 if color_count > 90 else 0
-    complex_score += 1 if logo > 38 else 0
+    complex_score += 2 if logo > 38 else 0
     complex_score += 1 if text > 18 else 0
     complex_score += 2 if text > 70 else 0
-    complex_score += 2 if splash > 35 else 0
-    complex_score += 1 if noise > 14 else 0
-    complex_score += 1 if recommended == "color_bg" and uniformity < 88 else 0
-    complex_score += 1 if uniformity < 76 else 0
+    complex_score += 1 if splash > 35 and (edge > 5 or color_count > 40 or text > 18 or logo > 38) else 0
+    complex_score += 1 if splash > 35 and text > 35 else 0
+    complex_score += 1 if noise > 14 and (edge > 5 or color_count > 40) else 0
+    complex_score += 1 if recommended == "color_bg" and uniformity < 88 and (edge > 5 or color_count > 40 or text > 18) else 0
+    complex_score += 1 if uniformity < 76 and (edge > 5 or color_count > 40) else 0
     return "white_background_complex" if complex_score >= 3 else "white_background_simple"
 
 
@@ -161,13 +165,13 @@ def _mode_for_case(case_type: str) -> str:
     return {
         "png_transparent": "transparent_png",
         "white_background_simple": "color_bg",
-        "white_background_complex": "complex_white_bg",
+        "white_background_complex": "ai_background",
         "black_background": "black_bg",
         "color_background": "color_bg",
         "dark_design": "dark_artwork",
         "photo": "photograph",
         "low_resolution": "professional_safe",
-        "high_risk_art": "professional_safe",
+        "high_risk_art": "ai_background",
     }.get(case_type, "professional_safe")
 
 
@@ -209,7 +213,9 @@ def _reason(case_type: str, data: dict[str, object]) -> str:
 
 def _suggested_next_step(case_type: str, light: str) -> str:
     if case_type == "white_background_complex":
-        return "Procesar con Fondo blanco complejo y revisar Refinar residuos blancos"
+        return "Probar Recorte IA y revisar sobre verde/negro"
+    if case_type == "high_risk_art":
+        return "Probar Recorte IA o revisar visualmente antes de exportar"
     if light == "red":
         return "Revisar visualmente antes de exportar"
     if light == "yellow":

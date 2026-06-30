@@ -7,9 +7,15 @@ import json
 
 from PIL import Image
 
-from core.background import apply_ai_alpha_to_original, has_transparency, remove_background_ai, resize_for_ai, should_use_ai
+from core.background import apply_ai_alpha_to_original, has_transparency, remove_background_ai as remove_photo_background_ai, resize_for_ai, should_use_ai
 from core.auto_router import autopilot_quality_check, autopilot_route
 from core.black_remove import remove_black_background
+from core.ai_background import (
+    ai_background_report,
+    ai_debug_previews,
+    refine_ai_alpha_for_dtf,
+    remove_background_ai as remove_ai_background_cutout,
+)
 from core.background_remove import cleanup_light_background_residue, cleanup_light_edge_matte, remove_background_opencv, remove_dominant_background
 from core.clean import clean_alpha_with_stats, trim_transparent
 from core.dtf_prepress import DTFPrepressSettings, mask_png_bytes, prepare_dtf
@@ -33,6 +39,7 @@ from core.manual_white_region import (
     selected_region_mask_image,
 )
 from core.resize import fit_to_print_size, upscale_and_sharpen
+from core.production_dtf import clean_for_production
 from core.logger import get_logger
 from core.non_destructive_clean import estimate_art_loss_risk, non_destructive_clean, restore_artwork_pixels
 from core.residue_refine import (
@@ -128,6 +135,8 @@ class PipelineSettings:
     manual_white_max_area: int = 50000
     manual_white_connectivity: int = 8
     manual_white_action: str = "preview"
+    production_dtf_enabled: bool = False
+    production_dtf_preset: str = "Balanceado"
 
 
 def process_artwork(
@@ -155,14 +164,26 @@ def process_artwork(
     logo_report: dict[str, object] | None = None
     logo_layers: dict[str, object] | None = None
     complex_debug: dict[str, object] | None = None
+    ai_background_debug: dict[str, object] | None = None
     internal_settings: InternalLightResidueSettings | None = None
     manual_settings: ManualWhiteRegionSettings | None = None
     white_source = work.copy()
     white_level = _white_level(settings, detection)
     fine_level = _fine_level(settings, detection)
+    ai_cutout = effective_mode == "ai_background"
     auto_photo = settings.mode_key == "auto" and effective_mode == "photograph"
     auto_removable_background = settings.mode_key == "auto" and effective_mode in {"black_bg", "color_bg", "complex_white_bg"}
-    if effective_mode == "complex_white_bg":
+    if ai_cutout:
+        ai_result = remove_ai_background_cutout(
+            work,
+            session=session_factory() if session_factory else None,
+        )
+        work = refine_ai_alpha_for_dtf(ai_result)
+        ai_background_debug = {
+            "stats": ai_background_report(img, work),
+            "previews": ai_debug_previews(work),
+        }
+    elif effective_mode == "complex_white_bg":
         complex_result = remove_complex_white_background(
             work,
             ComplexWhiteSettings(
@@ -213,12 +234,18 @@ def process_artwork(
                 max_area=settings.manual_white_max_area,
                 connectivity=settings.manual_white_connectivity,
             )
+        if settings.production_dtf_enabled:
+            production_result = clean_for_production(work, settings.production_dtf_preset)
+            work = production_result.image
+            complex_debug["production_dtf"] = production_result.debug["production"]
+            complex_debug["production_residue"] = production_result.debug["residue"]
+            complex_debug["production_internal_residue"] = production_result.debug["internal_residue"]
     elif (settings.use_ai or auto_photo) and (should_use_ai(effective_detection, "photograph") or auto_photo) and not has_transparency(work):
         ai_img = resize_for_ai(work, max_side=settings.max_ai_side)
-        ai_result = remove_background_ai(ai_img, session=session_factory() if session_factory else None)
+        ai_result = remove_photo_background_ai(ai_img, session=session_factory() if session_factory else None)
         work = apply_ai_alpha_to_original(work, ai_result)
-    use_non_destructive = (settings.safe_mode or settings.mode_key == "professional_safe") and not auto_removable_background
-    if use_non_destructive and not auto_photo and effective_mode != "complex_white_bg":
+    use_non_destructive = (settings.safe_mode or settings.mode_key == "professional_safe") and not auto_removable_background and not ai_cutout
+    if use_non_destructive and not auto_photo and effective_mode not in {"complex_white_bg", "ai_background"}:
         nd_result = non_destructive_clean(
             work,
             min_area=settings.despeckle_area,
@@ -233,7 +260,7 @@ def process_artwork(
         if _should_cleanup_light_residue(settings, effective_detection, effective_mode):
             work = cleanup_light_background_residue(work, tolerance=max(settings.color_tolerance + 18, 58))
             work = cleanup_light_edge_matte(work, tolerance=max(settings.color_tolerance + 26, 66))
-    if settings.protect_white_details and not auto_photo:
+    if settings.protect_white_details and not auto_photo and not ai_cutout:
         work, white_mask, stats = protect_white_regions(white_source, work, level=white_level)
         white_stats = stats.to_dict()
     if internal_settings is not None and complex_debug is not None:
@@ -291,10 +318,12 @@ def process_artwork(
     metadata_extra.update(_logo_metadata_extra(logo_report))
     auto_quality = autopilot_quality_check(work) if settings.mode_key == "auto" else None
     metadata_extra.update(_complex_white_metadata_extra(complex_debug))
+    metadata_extra.update(_ai_background_metadata_extra(ai_background_debug))
     metadata_extra.update(_autopilot_metadata_extra(autopilot, auto_quality))
     extra_files = _dtf_extra_files(dtf_result)
     extra_files.update(_logo_extra_files(logo_layers, logo_report))
     extra_files.update(_complex_white_extra_files(complex_debug, settings))
+    extra_files.update(_ai_background_extra_files(ai_background_debug, settings))
     exports = build_export_package(
         work,
         dpi=settings.dpi,
@@ -331,6 +360,7 @@ def process_artwork(
         "logo_palette": logo_report.get("palette", []) if logo_report else None,
         "logo_layers": logo_layers.get("layers", []) if logo_layers else None,
         "complex_white_debug": complex_debug,
+        "ai_background_debug": ai_background_debug,
         "autopilot": autopilot,
         "autopilot_quality": auto_quality,
         **exports,
@@ -486,6 +516,9 @@ def _complex_white_metadata_extra(debug: dict[str, object] | None) -> dict[str, 
     manual = dict(debug.get("manual_white") or {})
     manual_stats = dict(manual.get("stats") or {})
     values.update({f"manual_white_{key}": str(value) for key, value in manual_stats.items()})
+    production = dict(debug.get("production_dtf") or {})
+    production_stats = dict(production.get("stats") or {})
+    values.update({f"production_dtf_{key}": str(value) for key, value in production_stats.items()})
     return values
 
 
@@ -549,8 +582,51 @@ def _complex_white_extra_files(debug: dict[str, object] | None, settings: Pipeli
     manual_report = manual.get("report_json")
     if isinstance(manual_report, bytes):
         files["debug_manual_region_report.json"] = manual_report
+    production = dict(debug.get("production_dtf") or {})
+    production_previews = dict(production.get("previews") or {})
+    production_names = {
+        "preview_green": "debug_production_preview_green.png",
+        "preview_black": "debug_production_preview_black.png",
+    }
+    for key, filename in production_names.items():
+        image = production_previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
+    production_report = production.get("report_json")
+    if isinstance(production_report, bytes):
+        files["debug_production_report.json"] = production_report
     return files
 
+
+
+def _ai_background_metadata_extra(debug: dict[str, object] | None) -> dict[str, str]:
+    if not debug:
+        return {}
+    stats = dict(debug.get("stats") or {})
+    return {f"ai_background_{key}": str(value) for key, value in stats.items()}
+
+
+def _ai_background_extra_files(debug: dict[str, object] | None, settings: PipelineSettings) -> dict[str, bytes]:
+    if not debug or not settings.complex_white_export_debug:
+        return {}
+    from core.export import png_bytes
+
+    files: dict[str, bytes] = {}
+    previews = dict(debug.get("previews") or {})
+    names = {
+        "alpha_mask": "debug_ai_alpha_mask.png",
+        "preview_green": "debug_ai_preview_green.png",
+        "preview_black": "debug_ai_preview_black.png",
+        "preview_red": "debug_ai_preview_red.png",
+    }
+    for key, filename in names.items():
+        image = previews.get(key)
+        if image is not None:
+            files[filename] = png_bytes(image, dpi=settings.dpi)
+    stats = dict(debug.get("stats") or {})
+    if stats:
+        files["debug_ai_background_report.json"] = json.dumps(stats, indent=2, ensure_ascii=False).encode("utf-8")
+    return files
 
 def _autopilot_metadata_extra(autopilot: dict[str, object] | None, quality: dict[str, object] | None) -> dict[str, str]:
     values: dict[str, str] = {}

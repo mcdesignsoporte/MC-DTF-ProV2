@@ -52,6 +52,7 @@ def render_result_workspace(
     logo_palette: list[dict[str, object]] | None = None,
     logo_layers: list[dict[str, object]] | None = None,
     complex_white_debug: dict[str, object] | None = None,
+    ai_background_debug: dict[str, object] | None = None,
     autopilot: dict[str, object] | None = None,
     autopilot_quality: dict[str, object] | None = None,
 ) -> None:
@@ -85,6 +86,7 @@ def render_result_workspace(
         "Arte protegido",
         "Riesgo de perdida",
         "Debug blanco",
+        "Recorte IA",
         "Original",
     ])
 
@@ -113,6 +115,8 @@ def render_result_workspace(
     with tabs[11]:
         render_complex_white_debug(complex_white_debug)
     with tabs[12]:
+        render_ai_background_debug(ai_background_debug, complex_white_debug)
+    with tabs[13]:
         st.image(composite_preview(original, background), use_container_width=True)
 
     left, right = st.columns([1, 1])
@@ -124,6 +128,7 @@ def render_result_workspace(
         render_dtf_prepress_stats(alpha_quality, dtf_prepress, small_elements_report)
         render_logo_stats(logo_report, logo_palette)
         render_complex_white_stats(complex_white_debug)
+        render_ai_background_stats(ai_background_debug)
         render_autopilot_stats(autopilot, autopilot_quality)
         render_quality_report(production_report)
     with right:
@@ -369,6 +374,7 @@ def render_complex_white_debug(debug: dict[str, object] | None) -> None:
             st.image(composite_preview(image, "Transparente"), use_container_width=True)
     render_residue_debug(dict(debug.get("residue") or {}))
     render_internal_residue_debug(dict(debug.get("internal_residue") or {}))
+    render_production_dtf_debug(dict(debug.get("production_dtf") or {}))
     render_manual_white_debug(dict(debug.get("manual_white") or {}))
 
 
@@ -384,7 +390,72 @@ def render_complex_white_stats(debug: dict[str, object] | None) -> None:
     st.metric("Color fondo", str(stats.get("background_color", "-")))
     render_residue_stats(dict(debug.get("residue") or {}))
     render_internal_residue_stats(dict(debug.get("internal_residue") or {}))
+    render_production_dtf_stats(dict(debug.get("production_dtf") or {}))
     render_manual_white_stats(dict(debug.get("manual_white") or {}))
+
+
+
+def render_ai_background_debug(debug: dict[str, object] | None, complex_debug: dict[str, object] | None = None) -> None:
+    """Render local AI cutout reviews and comparison with complex-white engine."""
+    st.subheader("Recorte IA")
+    if not debug:
+        st.info("Sin diagnostico de Recorte IA para este resultado.")
+        return
+    previews = dict(debug.get("previews") or {})
+    comparison = dict(debug.get("comparison") or {})
+    if comparison.get("complex_white_result") is not None:
+        st.caption("Resultado Fondo blanco complejo")
+        st.image(composite_preview(comparison["complex_white_result"], "Transparente"), use_container_width=True)
+    for key, label in [
+        ("preview_green", "Recorte IA sobre verde"),
+        ("preview_black", "Recorte IA sobre negro"),
+        ("preview_red", "Recorte IA sobre rojo"),
+        ("alpha_mask", "Mascara alpha IA"),
+    ]:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+
+
+def render_ai_background_stats(debug: dict[str, object] | None) -> None:
+    """Render AI cutout metrics."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Recorte IA")
+    st.metric("Motor", str(stats.get("engine", "rembg")))
+    st.metric("Transparencia IA", f"{stats.get('transparent_percent', 0)}%")
+    st.metric("Cambio alpha", f"{stats.get('changed_alpha_percent', 0)}%")
+    st.warning("Revisión recomendada: verifica bordes sobre verde/negro antes de imprimir.")
+
+def render_production_dtf_debug(debug: dict[str, object]) -> None:
+    """Render production cleanup previews."""
+    if not debug:
+        return
+    st.subheader("Modo Producción DTF")
+    previews = dict(debug.get("previews") or {})
+    for key, label in [("preview_green", "Resultado sobre verde"), ("preview_black", "Resultado sobre negro")]:
+        image = previews.get(key)
+        if image is not None:
+            st.caption(label)
+            st.image(composite_preview(image, "Transparente"), use_container_width=True)
+
+
+def render_production_dtf_stats(debug: dict[str, object]) -> None:
+    """Render production cleanup summary."""
+    if not debug:
+        return
+    stats = dict(debug.get("stats") or {})
+    st.subheader("Estado de producción")
+    st.metric("Preset", str(stats.get("preset", "-")))
+    st.metric("Estado", str(stats.get("production_status", "-")))
+    st.metric("Pixeles eliminados", str(stats.get("production_removed_pixels", 0)))
+    st.metric("Residuos detectados", str(stats.get("internal_components_detected", 0)))
+    st.metric("Residuos eliminados", str(stats.get("internal_components_removed", 0)))
+    st.metric("Pendientes", str(stats.get("production_pending_components", 0)))
+    if int(stats.get("production_pending_components", 0) or 0) > 0:
+        st.warning("Quedan componentes pendientes: revisar overlay, verde/negro o usar borrado manual.")
 
 
 def render_residue_debug(debug: dict[str, object]) -> None:
